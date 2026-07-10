@@ -63,8 +63,8 @@ Compile Options:
 		Compiles entry point and auto-discovered dependencies into a standalone executable.
 
 Debug Options:
-    lute debug serve
-        Serves a DAP server for Luau for use with a development environment.
+	lute debug serve
+		Serves a DAP server for Luau for use with a development environment.
 
 Setup Options:
 	lute setup
