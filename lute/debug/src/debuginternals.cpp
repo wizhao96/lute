@@ -378,7 +378,7 @@ bool Target::continueProcess()
     if (stoppedThread)
     {
         childRuntime->runningThreads.push_back({true, getRefForThread(stoppedThread), 0});
-        // This schedule wakes up the runtime in runContinuously() to re-run runToCompletion() in case that has exited. This is a no-op if
+        // This schedule() wakes up the runtime in runContinuously() to re-run runToCompletion() in case that has exited. This is a no-op if
         // runToCompletion() has not exited.
         childRuntime->schedule([]() {});
         stoppedThread = nullptr;

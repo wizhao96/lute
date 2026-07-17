@@ -394,7 +394,7 @@ void Runtime::continueDebug()
     debugStoppedCv.notify_one();
 }
 
-// stopDebug() actually allows for some C bookkeeping when it is unwinding the stack
+// stopDebug() actually allows for some C bookkeeping when we are unwinding the stack
 // when it is called within a callback such as debugbreak or debugInterrupt, which you could imagine might
 // lead to a race condition. The important thing is that this bookkeeping does not touch the Luau state that we can inspect
 // making this a nonissue.
