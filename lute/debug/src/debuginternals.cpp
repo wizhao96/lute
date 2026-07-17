@@ -405,7 +405,6 @@ bool Target::continueProcess()
 
 bool Target::pauseProcess()
 {
-
     std::unique_lock lock(targetMutex);
     if (!launched || paused)
         return false;
