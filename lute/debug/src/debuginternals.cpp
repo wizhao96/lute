@@ -384,6 +384,9 @@ bool Target::continueProcess()
         childRuntime->schedule([]() {});
         stoppedThread = nullptr;
     }
+    // this stops the interrupts that trigger pausing.
+    lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
+    cb->debuginterrupt = nullptr;
     // we are continuing on a breakpoint and so might need to flag continueRequestedBp.
     if (bpHit)
     {
@@ -409,6 +412,7 @@ bool Target::pauseProcess()
     cb->userdata = this;
     // the interrupt callback calls at any safepoint, which
     // is the soonest we can pause execution safely.
+    // safepoints are loop back edges or function calls/returns.
     cb->interrupt = [](lua_State* L, int gc)
     {
         // gc runs when it is not -1
@@ -427,7 +431,8 @@ bool Target::pauseProcess()
         lua_callbacks(L)->interrupt = nullptr;
         lock.unlock();
         // Since pausing actually only happens when the interrupt callback runs we have a callback
-        target->launchConfig.onPause();
+        if (target->launchConfig.onPause)
+            target->launchConfig.onPause();
         for (auto& bp : installed)
             target->launchConfig.onBreakpointInstall(bp);
         for (auto& bp : uninstalled)
