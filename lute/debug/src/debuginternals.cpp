@@ -310,7 +310,6 @@ void Target::installBpHitCallback()
     cb->debugbreak = [](lua_State* L, lua_Debug* ar)
     {
         auto target = static_cast<Target*>(lua_callbacks(L)->userdata);
-        // TODO: this pause/resume mechanism assumes single co-routine runtime
         // We land on the same instruction after a continue() after hitting a bp so we basically don't do anything
         std::unique_lock lock(target->targetMutex);
         if (target->continueRequestedBp)
@@ -379,15 +378,15 @@ bool Target::continueProcess()
     if (stoppedThread)
     {
         childRuntime->runningThreads.push_back({true, getRefForThread(stoppedThread), 0});
-        // We need to wake up the runtime in runContinuously() to re-run runToCompletion in case that has exited. This is a no-op if
+        // This schedule wakes up the runtime in runContinuously() to re-run runToCompletion() in case that has exited. This is a no-op if
         // runToCompletion() has not exited.
         childRuntime->schedule([]() {});
         stoppedThread = nullptr;
     }
     // this clears the interrupts that triggers when the process is paused from client request
-    // in case it has not actually been triggerred.
+    // in case it has not actually been triggered.
     lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
-    cb->debuginterrupt = nullptr;
+    cb->interrupt = nullptr;
     // we are continuing on a breakpoint and so might need to flag continueRequestedBp.
     if (bpHit)
     {
@@ -419,8 +418,6 @@ bool Target::pauseProcess()
         if (gc != -1)
             return;
         auto target = static_cast<Target*>(lua_callbacks(L)->userdata);
-        // TODO: this pause/resume mechanism assumes single co-routine runtime
-        // We land on the same instruction after a continue() after hitting a bp so we basically don't do anything
         std::unique_lock lock(target->targetMutex);
         target->paused = true;
         target->childRuntime->stopDebug();
@@ -428,6 +425,7 @@ bool Target::pauseProcess()
         // We transition into a paused state. Let's modify all pending breakpoints.
         auto [installed, uninstalled] = target->modifyPendingBreakpoints(target->scriptThread);
         lua_break(L);
+        // Clear out the interrupt callback after we are done.
         lua_callbacks(L)->interrupt = nullptr;
         lock.unlock();
         // Since pausing actually only happens when the interrupt callback runs we have a callback

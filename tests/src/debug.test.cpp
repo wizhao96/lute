@@ -284,7 +284,6 @@ TEST_SUITE("Debug")
                 // At this point target and its Runtime should be destroyed.
             }
         );
-
         REQUIRE(destroyFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
     }
 }

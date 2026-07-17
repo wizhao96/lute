@@ -56,7 +56,7 @@ Runtime::~Runtime()
                 lua_break(L);
             };
         }
-    
+
         runLoopCv.notify_one();
     }
 
