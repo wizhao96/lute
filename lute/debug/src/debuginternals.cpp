@@ -384,7 +384,8 @@ bool Target::continueProcess()
         childRuntime->schedule([]() {});
         stoppedThread = nullptr;
     }
-    // this stops the interrupts that trigger pausing.
+    // this clears the interrupts that triggers when the process is paused from client request
+    // in case it has not actually been triggerred.
     lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
     cb->debuginterrupt = nullptr;
     // we are continuing on a breakpoint and so might need to flag continueRequestedBp.
