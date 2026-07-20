@@ -320,4 +320,38 @@ TEST_SUITE("Debug")
         );
         REQUIRE(destroyFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
     }
+    TEST_CASE_FIXTURE(DebugFixture, "Debug_threadTracking")
+    {
+        std::string fixturePath = getDebugFixturePath("spawn.luau");
+        Target target(*runtime);
+        Breakpoint bp = target.setBreakpoint(fixturePath, 7);
+
+        int maxThreadsSeen = 0;
+        int hits = 0;
+        config.onBreakpointHit = [&](const Breakpoint& bp)
+        {
+            hits++;
+            std::optional<std::vector<Thread>> threads = target.getThreads();
+            REQUIRE(threads.has_value());
+            maxThreadsSeen = std::max(maxThreadsSeen, (int)threads->size());
+            target.continueProcess();
+            // we shouldn't get threads when things are paused
+            threads = target.getThreads();
+            if (threads->size() == 3)
+            {
+                Thread t0(0, "Thread 0");
+                Thread t1(1, "Thread 1");
+                Thread t2(0, "Thread 2");
+                CHECK(std::find(threads->begin(), threads->end(), t0) != threads->end());
+                CHECK(std::find(threads->begin(), threads->end(), t1) != threads->end());
+                CHECK(std::find(threads->begin(), threads->end(), t2) != threads->end());
+            }
+            REQUIRE(!threads.has_value());
+        };
+
+        target.launch(fixturePath, {}, config);
+        REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+        CHECK(maxThreadsSeen == 3);
+        CHECK(hits == 5);
+    }
 }

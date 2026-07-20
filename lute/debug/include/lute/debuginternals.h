@@ -45,6 +45,26 @@ struct LaunchConfig
     std::function<void()> onPause;
 };
 
+// Threads are DAP structures but actually represent
+// coroutines in our Lute runtime
+struct Thread
+{
+    int id = -1;
+    std::string name = "";
+    Thread() = default; // for unordered_map
+    Thread(int id, std::string name);
+    bool operator==(const Thread& other) const;
+};
+
+struct StackFrame
+{
+    int id;
+    std::string name;
+    std::string sourcePath;
+    int line;
+    int column;
+};
+
 struct Target
 {
     explicit Target(Runtime& parentRuntime);
@@ -70,6 +90,9 @@ struct Target
     std::vector<Breakpoint> getBreakpointsByStatus(BreakpointStatus status) const;
     std::optional<Breakpoint> getBreakpointById(int breakpointId) const;
     std::optional<Breakpoint> getBreakpointBySourceLine(std::string source, int line) const;
+
+    // For inspsection::
+    std::optional<std::vector<Thread>> getThreads() const;
 
     // For actively running scripts:
     bool launch(const std::string& sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
@@ -100,6 +123,11 @@ private:
     // our stopped thread that we need to requeue when we continue
     lua_State* stoppedThread = nullptr;
 
+    // thread information
+    int threadId = 0;
+    std::unordered_map<lua_State*, Thread> stateToThread; // lua_State* -> thread information about that state
+    std::unordered_map<int, lua_State*> threadIdToState;  // thread id -> lua_State*
+
     // for require contexts
     std::unique_ptr<RequireCtx> requireCtx;
 
@@ -113,5 +141,6 @@ private:
 
     void installBpHitCallback();
     void installExitCallback();
+    void installThreadCallback();
 };
 } // namespace debug

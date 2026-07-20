@@ -31,6 +31,17 @@ Breakpoint::Breakpoint(int id, std::string sourcePath, int line, BreakpointStatu
 {
 }
 
+Thread::Thread(int id, std::string name)
+    : id(id)
+    , name(name)
+{
+}
+
+bool Thread::operator==(const Thread& other) const
+{
+    return id == other.id;
+}
+
 Target::Target(Runtime& parentRuntime)
     : parentRuntime(parentRuntime)
     , loadedSources("")
@@ -339,9 +350,19 @@ bool Target::launch(const std::string& sourcePath, const std::vector<std::string
         childRuntime->runningThreads.push_back({true, getRefForThread(thread), static_cast<int>(args.size())});
         lua_pop(childRuntime->GL, 1);
 
+        // thread initialization
         scriptThread = thread;
+        threadIdToState[threadId] = thread;
+        stateToThread[thread] = Thread(threadId, "Thread " + std::to_string(threadId));
+        threadId++;
+
+        // install user data before all callbacks
+        lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
+        cb->userdata = this;
         installBpHitCallback();
         installExitCallback();
+        installThreadCallback();
+
         // All VM setup happens synchronously before runContinuously starts the background thread.
         // The no-op schedule wakes the event loop so it picks up the queued thread.
         paused = false;
@@ -359,7 +380,6 @@ bool Target::launch(const std::string& sourcePath, const std::vector<std::string
 void Target::installBpHitCallback()
 {
     lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
-    cb->userdata = this;
     cb->debugbreak = [](lua_State* L, lua_Debug* ar)
     {
         auto target = static_cast<Target*>(lua_callbacks(L)->userdata);
@@ -420,6 +440,58 @@ void Target::installExitCallback()
             launchConfig.onExit(status == LUA_OK);
     };
     childRuntime->addThreadCompletionHandler(scriptThread, std::move(completion));
+}
+
+void Target::installThreadCallback()
+{
+    lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
+    cb->userthread = [](lua_State* LP, lua_State* L)
+    {
+        auto target = static_cast<Target*>(lua_callbacks(L)->userdata);
+        std::unique_lock lock(target->targetMutex);
+
+        // this means a thread is being garbage collected
+        if (LP == nullptr)
+        {
+            if (auto it = target->stateToThread.find(L); it != target->stateToThread.end())
+            {
+                int id = it->second.id;
+                target->stateToThread.erase(it);
+                if (auto it2 = target->threadIdToState.find(id); it2 != target->threadIdToState.end())
+                {
+                    target->threadIdToState.erase(it2);
+                }
+                else
+                {
+                    target->parentRuntime.reporter.reportError(Luau::format("userthread callback fired for unregistered thread id %d", id));
+                }
+            }
+            else
+            {
+                target->parentRuntime.reporter.reportError(Luau::format("userthread callback fired for unregistered lua_State* %p", (void*)L));
+            }
+        }
+        else
+        {
+            target->threadIdToState[target->threadId] = L;
+            target->stateToThread[L] = Thread(target->threadId, "Thread " + std::to_string(target->threadId));
+            target->threadId++;
+        }
+    };
+}
+
+std::optional<std::vector<Thread>> Target::getThreads() const
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+        return std::nullopt;
+    std::vector<Thread> result;
+    for (auto& [L, thread] : stateToThread)
+    {
+        if (lua_costatus(childRuntime->GL, L) != LUA_COFIN)
+            result.push_back(thread);
+    }
+    return result;
 }
 
 bool Target::continueProcess()
@@ -491,4 +563,5 @@ bool Target::pauseProcess()
     };
     return true;
 }
+
 } // namespace debug
