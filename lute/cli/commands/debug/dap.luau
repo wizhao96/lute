@@ -68,6 +68,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 	}
 	local configurationDone = false
 	local launchConfig: dapTypes.LaunchArgs? = nil
+	local launchSeq = -1
 	while true do
 		local request = ioSession.readDap()
 		local command = request.command :: string
@@ -87,7 +88,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			ioSession.writeResponse(reqSeq, true, command)
 			if launchConfig then
 				target:launch(launchConfig.program, launchConfig.args, launchCallbacks)
-				ioSession.writeResponse(reqSeq, true, command)
+				ioSession.writeResponse(launchSeq, true, command)
 			end
 		elseif command == "setBreakpoints" then
 			local args = request.arguments :: json.Object
@@ -109,6 +110,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 					program = args.program,
 					args = args.args,
 				}
+				launchSeq = reqSeq
 				-- configuration is already done, respond to launch
 				if configurationDone then
 					target:launch(launchConfig.program, launchConfig.args, launchCallbacks)

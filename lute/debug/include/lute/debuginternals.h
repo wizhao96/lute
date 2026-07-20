@@ -35,6 +35,8 @@ struct Breakpoint
 
 struct LaunchConfig
 {
+    // onBreakpointInstall() signals we tried to install a bp, regardless of ultimate success or failure
+    // the ultimate result of installation is passed into bp.
     std::function<void(const Breakpoint& bp)> onBreakpointInstall;
     std::function<void(const Breakpoint& bp)> onBreakpointUninstall;
     std::function<void(const Breakpoint& bp)> onBreakpointHit;
