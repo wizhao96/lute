@@ -1,21 +1,156 @@
 local dapStream = require("./dapStream")
+local dapTypes = require("./dapTypes")
+local debug = require("@lute/debug")
+local json = require("@std/json")
+
+local function debugToDapBreakpoint(breakpoint: debug.Breakpoint): dapTypes.Breakpoint
+	local dapBreakpoint: dapTypes.Breakpoint = {
+		id = breakpoint.id,
+		verified = breakpoint.status == "installed",
+		source = {
+			path = breakpoint.sourcePath,
+		},
+		line = breakpoint.line,
+	}
+	if breakpoint.status == "pendingInstall" then
+		dapBreakpoint.reason = "pending"
+	end
+	if breakpoint.status == "invalid" then
+		dapBreakpoint.reason = "failed"
+	end
+	return dapBreakpoint
+end
+
+local function clearAndSetBreakpoints(
+	target: debug.Target,
+	sourcePath: string,
+	newBreakpoints: { dapTypes.SourceBreakpoint }?
+): { dapTypes.Breakpoint }
+	local currentBps = target:getBreakpoints()
+	for _, bp in currentBps do
+		if bp.sourcePath == sourcePath then
+			target:removeBreakpoint(bp.id)
+		end
+	end
+	local requestedBps = {}
+	if newBreakpoints then
+		for _, setBp in newBreakpoints do
+			table.insert(requestedBps, debugToDapBreakpoint(target:setBreakpoint(sourcePath, setBp.line)))
+		end
+	end
+	return requestedBps
+end
 
 local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
+	local fs = require("@lute/fs")
+	local log = fs.open("/tmp/lute-dap.log", "w")
 	local ioSession = dapStream.makeDapStreamSession(reader, writer)
+	local target = debug.newTarget()
+	local launchCallbacks: debug.LaunchConfig = {
+		onBreakpointHit = function(bp: debug.Breakpoint)
+			ioSession.writeEvent("stopped", {
+				reason = "breakpoint",
+				threadId = 1,
+				hitBreakpointIds = { bp.id },
+			})
+		end,
+		onBreakpointInstall = function(bp: debug.Breakpoint)
+			ioSession.writeEvent("breakpoint", {
+				reason = "changed",
+				breakpoint = {
+					id = bp.id,
+					verified = true,
+				},
+			})
+		end,
+		onExit = function(success: boolean)
+			local exitCode = if success then 0 else 1
+			fs.write(log, `[dap] exited\n`)
+			ioSession.writeEvent("exited", {
+				exitCode = exitCode,
+			})
+			ioSession.writeEvent("terminated")
+		end,
+	}
+	local configurationDone = false
+	local launchConfig: dapTypes.LaunchArgs? = nil
 	while true do
 		local request = ioSession.readDap()
 		local command = request.command :: string
 		local reqSeq = request.seq :: number
+		fs.write(log, `[dap] request: {json.serialize(request)}\n`)
 		if command == "initialize" then
-			ioSession.writeResponse(reqSeq, true, command)
+			local capabilities = {
+				supportsConfigurationDoneRequest = true,
+				supportsTerminateRequest = true,
+			}
+			ioSession.writeResponse(reqSeq, true, command, nil, capabilities)
+			fs.write(log, `[dap] initialize response capabilities: {json.serialize(capabilities)}\n`)
 			ioSession.writeEvent("initialized")
 		elseif command == "configurationDone" then
+			configurationDone = true
+			-- clients can send either configurationDone before or after launch.
+			-- in the second case, we delay sending a response to the launch request until after
+			-- configuration is done.
 			ioSession.writeResponse(reqSeq, true, command)
+			if launchConfig then
+				target:launch(launchConfig.program, launchConfig.args, launchCallbacks)
+				ioSession.writeResponse(reqSeq, true, command)
+			end
+		elseif command == "setBreakpoints" then
+			local args = request.arguments :: json.Object
+			local source = args.source :: dapTypes.Source
+			local path = source.path :: string
+			local newBreakpoints = args.breakpoints :: { dapTypes.SourceBreakpoint }?
+			local requestedBreakpoints = clearAndSetBreakpoints(target, path, newBreakpoints)
+
+			ioSession.writeResponse(reqSeq, true, command, nil, {
+				breakpoints = requestedBreakpoints,
+			})
+			fs.write(
+				log,
+				`[dap] setBreakpoints response body: {json.serialize({ breakpoints = requestedBreakpoints })}\n`
+			)
+		elseif command == "continue" then
+			target:continueProcess()
+			ioSession.writeResponse(reqSeq, true, command)
+		elseif command == "launch" then
+			local args = request.arguments :: dapTypes.LaunchArgs?
+			if args and args.program then
+				launchConfig = {
+					program = args.program,
+					args = args.args,
+				}
+				-- configuration is already done, respond to launch
+				if configurationDone then
+					target:launch(launchConfig.program, launchConfig.args, launchCallbacks)
+					ioSession.writeResponse(reqSeq, true, command)
+				end
+			end
+		-- dummy handlers for threads and stackTrace for now
+		elseif command == "threads" then
+			ioSession.writeResponse(reqSeq, true, command, nil, {
+				threads = {
+					{ id = 1, name = "main thread" },
+				},
+			})
+		elseif command == "stackTrace" then
+			local launchPath = assert(launchConfig, "not launched")
+			ioSession.writeResponse(reqSeq, true, command, nil, {
+				stackFrames = {
+					{
+						id = 1,
+						name = "main",
+						source = { path = launchPath.program },
+						line = 1,
+						column = 0,
+					},
+				},
+				totalFrames = 1,
+			})
 		elseif command == "terminate" or command == "disconnect" then
 			ioSession.writeResponse(reqSeq, true, command)
 			break
-		elseif command == "launch" then
-			ioSession.writeResponse(reqSeq, true, command)
 		else
 			ioSession.writeResponse(reqSeq, false, command, `unsupported command: {command}`)
 		end
