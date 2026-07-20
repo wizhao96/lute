@@ -42,8 +42,6 @@ local function clearAndSetBreakpoints(
 end
 
 local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
-	local fs = require("@lute/fs")
-	local log = fs.open("/tmp/lute-dap.log", "w")
 	local ioSession = dapStream.makeDapStreamSession(reader, writer)
 	local target = debug.newTarget()
 	local launchCallbacks: debug.LaunchConfig = {
@@ -57,15 +55,11 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 		onBreakpointInstall = function(bp: debug.Breakpoint)
 			ioSession.writeEvent("breakpoint", {
 				reason = "changed",
-				breakpoint = {
-					id = bp.id,
-					verified = true,
-				},
+				breakpoint = debugToDapBreakpoint(bp),
 			})
 		end,
 		onExit = function(success: boolean)
 			local exitCode = if success then 0 else 1
-			fs.write(log, `[dap] exited\n`)
 			ioSession.writeEvent("exited", {
 				exitCode = exitCode,
 			})
@@ -78,14 +72,12 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 		local request = ioSession.readDap()
 		local command = request.command :: string
 		local reqSeq = request.seq :: number
-		fs.write(log, `[dap] request: {json.serialize(request)}\n`)
 		if command == "initialize" then
 			local capabilities = {
 				supportsConfigurationDoneRequest = true,
 				supportsTerminateRequest = true,
 			}
 			ioSession.writeResponse(reqSeq, true, command, nil, capabilities)
-			fs.write(log, `[dap] initialize response capabilities: {json.serialize(capabilities)}\n`)
 			ioSession.writeEvent("initialized")
 		elseif command == "configurationDone" then
 			configurationDone = true
@@ -107,10 +99,6 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			ioSession.writeResponse(reqSeq, true, command, nil, {
 				breakpoints = requestedBreakpoints,
 			})
-			fs.write(
-				log,
-				`[dap] setBreakpoints response body: {json.serialize({ breakpoints = requestedBreakpoints })}\n`
-			)
 		elseif command == "continue" then
 			target:continueProcess()
 			ioSession.writeResponse(reqSeq, true, command)
@@ -150,6 +138,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			})
 		elseif command == "terminate" or command == "disconnect" then
 			ioSession.writeResponse(reqSeq, true, command)
+			ioSession.writeEvent("terminated")
 			break
 		else
 			ioSession.writeResponse(reqSeq, false, command, `unsupported command: {command}`)
