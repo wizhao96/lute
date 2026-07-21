@@ -1,8 +1,10 @@
 #include <chrono>
 #include <future>
 #include <thread>
+#include <vector>
 
 #include "debugfixture.h"
+#include "debugger.h"
 #include "doctest.h"
 
 using namespace debug;
@@ -337,8 +339,6 @@ TEST_SUITE("Debug")
                 std::optional<std::vector<Thread>> threads = target.getThreads();
                 REQUIRE(threads.has_value());
                 maxThreadsSeen = std::max(maxThreadsSeen, (int)threads->size());
-                target.continueProcess();
-                threads = target.getThreads();
                 if (threads->size() == 3)
                 {
                     Thread t0(0, "Thread 0");
@@ -348,6 +348,8 @@ TEST_SUITE("Debug")
                     CHECK(std::find(threads->begin(), threads->end(), t1) != threads->end());
                     CHECK(std::find(threads->begin(), threads->end(), t2) != threads->end());
                 }
+                target.continueProcess();
+                threads = target.getThreads();
                 // we shouldn't get threads when things are paused
                 REQUIRE(!threads.has_value());
             }
@@ -366,5 +368,78 @@ TEST_SUITE("Debug")
         // over the course of execution, the maximum number of threads encountered should be 3
         CHECK(maxThreadsSeen == 3);
         CHECK(hits == 5);
+    }
+    TEST_CASE_FIXTURE(DebugFixture, "Debug_stackFrame")
+    {
+        std::string fixturePath = getDebugFixturePath("recursion.luau");
+        Target target(*runtime);
+        Breakpoint bpA = target.setBreakpoint(fixturePath, 4);
+        Breakpoint bpB = target.setBreakpoint(fixturePath, 8);
+        Breakpoint mainBp = target.setBreakpoint(fixturePath, 14);
+        int hits = 0;
+        config.onBreakpointHit = [&](const Breakpoint& bp)
+        {
+            std::optional<std::vector<Thread>> threads = target.getThreads();
+            REQUIRE(threads.has_value());
+            CHECK(threads->size() == 1);
+            int threadId = threads->at(0).id;
+            std::optional<std::vector<StackFrame>> stacktrace = target.getStackTrace(threadId);
+            REQUIRE(stacktrace.has_value());
+            // our stack trace should from the most deep stack frame go main -> a -> b -> a -> b ....
+            // the stack trace returns this in reverse since it starts from the shallowest stack frame.
+            hits++;
+            bool hitA = false;
+            int expectedTraceSize = hits;
+            if (bp.id == bpA.id)
+            {
+                hitA = true;
+            }
+            CHECK(stacktrace->size() == expectedTraceSize);
+
+            for (int i = 0; i < expectedTraceSize; i++)
+            {
+                int line;
+                int column = 0;
+                std::string name;
+                std::string sourcePath = fixturePath;
+                if (i == expectedTraceSize - 1)
+                {
+                    line = 14;
+                    name = "(anonymous)";
+                }
+                else if ((hitA && i % 2 == 0) || (!hitA && i % 2 == 1))
+                {
+                    line = 4;
+                    name = "a";
+                }
+                else
+                {
+                    // the function name field is not set during the equality operation
+                    // so B stays anonymous
+                    name = "(anonymous)";
+                    if (!hitA && i == 0)
+                    {
+                        line = 8;
+                    }
+                    else
+                    {
+                        line = 11;
+                    }
+                }
+                StackFrame frame = stacktrace->at(i);
+                CHECK(frame.id == i);
+                CHECK(frame.column == column);
+                CHECK(frame.line == line);
+                CHECK(frame.name == name);
+            }
+            bool continued = target.continueProcess();
+            CHECK(continued);
+            stacktrace = target.getStackTrace(threadId);
+            // we shouldn't get stack trace when things are paused
+            REQUIRE(!stacktrace.has_value());
+        };
+        target.launch(fixturePath, {}, config);
+        REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+        CHECK(hits == 9);
     }
 }

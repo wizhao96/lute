@@ -50,7 +50,7 @@ struct LaunchConfig
 struct Thread
 {
     int id = -1;
-    std::string name = "";
+    std::string name;
     Thread() = default; // for unordered_map
     Thread(int id, std::string name);
     bool operator==(const Thread& other) const;
@@ -58,11 +58,11 @@ struct Thread
 
 struct StackFrame
 {
-    int id;
+    int id = -1;
     std::string name;
     std::string sourcePath;
-    int line;
-    int column;
+    int line = 0;
+    int column = 0;
 };
 
 struct Target
@@ -91,8 +91,10 @@ struct Target
     std::optional<Breakpoint> getBreakpointById(int breakpointId) const;
     std::optional<Breakpoint> getBreakpointBySourceLine(std::string source, int line) const;
 
-    // For inspsection::
+    // For inspection::
     std::optional<std::vector<Thread>> getThreads() const;
+    std::optional<StackFrame> getStackFrame(int threadId, int level);
+    std::optional<std::vector<StackFrame>> getStackTrace(int threadId, int startLevel = 0, int maximumLevel = 0);
 
     // For actively running scripts:
     bool launch(const std::string& sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
@@ -128,12 +130,21 @@ private:
     std::unordered_map<lua_State*, Thread> stateToThread; // lua_State* -> thread information about that state
     std::unordered_map<int, lua_State*> threadIdToState;  // thread id -> lua_State*
 
+    // stack frame information
+    // note: stack frames are copies between these two data structures, not pointers. That's ok because the debugger
+    // should never modify the stack frames themselves.
+    // stack frame ID information is reset upon every continue(). The base id resets to 0 as well.
+    int stackframeId = 0;
+    std::unordered_map<int, std::unordered_map<int, StackFrame>> stateToStackFrame; // thread id -> level -> stackFrame
+    std::unordered_map<int, std::pair<int, int>> idToStackFrameInfo;                    // stack frame id -> stack frame's (thread id, level)
+
     // for require contexts
     std::unique_ptr<RequireCtx> requireCtx;
 
     // private methods are meant for internal calls, so these don't lock targetMutex
     std::optional<Breakpoint> getBreakpointBySourceLineHelper(std::string source, int line) const;
     std::optional<Breakpoint> getBreakpointByIdHelper(int breakpointId) const;
+    std::optional<StackFrame> getStackFrameHelper(int threadId, int level);
 
     bool installBreakpoint(lua_State* L, Breakpoint& bp);
     bool uninstallBreakpoint(lua_State* L, Breakpoint& bp);

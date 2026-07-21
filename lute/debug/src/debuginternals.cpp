@@ -494,6 +494,91 @@ std::optional<std::vector<Thread>> Target::getThreads() const
     return result;
 }
 
+
+std::optional<StackFrame> Target::getStackFrameHelper(int threadId, int level)
+{
+    if (!paused)
+        return std::nullopt;
+    if (threadIdToState.find(threadId) == threadIdToState.end())
+    {
+        return std::nullopt;
+    }
+    std::unordered_map<int, StackFrame>& levelMap = stateToStackFrame[threadId];
+    auto it = levelMap.find(level);
+    if (it == levelMap.end())
+    {
+        StackFrame frame;
+        frame.id = stackframeId;
+        stackframeId++;
+        lua_Debug ar = {};
+        if (!lua_getinfo(threadIdToState[threadId], level, "sln", &ar))
+            return std::nullopt;
+        // We want to differentiate between main and all other funcitons. We do 
+        // this be checking where that stack frame is defined (which is 0), unlike normal functions.
+        if (ar.linedefined == 0)
+            frame.name = "main";
+        else
+            frame.name = ar.name ? ar.name : "(anonymous)";
+        if (ar.source)
+        {
+            frame.sourcePath = ar.source;
+            frame.line = ar.currentline;
+        }
+        else
+        {
+            frame.sourcePath = "";
+            frame.line = 0;
+        }
+        frame.column = 0;
+        levelMap[level] = frame;
+        idToStackFrameInfo[frame.id] = std::make_pair(threadId, level);
+        return frame;
+    }
+    return it->second;
+}
+
+std::optional<StackFrame> Target::getStackFrame(int threadId, int level)
+{
+    std::unique_lock lock(targetMutex);
+    return getStackFrameHelper(threadId, level);
+}
+
+std::optional<std::vector<StackFrame>> Target::getStackTrace(int threadId, int startLevel, int numFrames)
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+        return std::nullopt;
+    if (threadIdToState.find(threadId) == threadIdToState.end())
+    {
+        return std::nullopt;
+    }
+    int stackDepth = lua_stackdepth(threadIdToState[threadId]);
+    if (startLevel >= stackDepth)
+    {
+        return std::nullopt;
+    }
+    int maximumLevel;
+    if (numFrames == 0)
+    {
+        maximumLevel = stackDepth;
+    }
+    else
+    {
+        maximumLevel = std::min(startLevel + numFrames, stackDepth);
+    }
+    std::vector<StackFrame> stackTrace;
+    for (int i = startLevel; i < maximumLevel; i++)
+    {
+        std::optional<StackFrame> frame = getStackFrameHelper(threadId, i);
+        if (!frame)
+        {
+            return std::nullopt;
+        }
+        stackTrace.emplace_back(*frame);
+    }
+    return stackTrace;
+}
+
 bool Target::continueProcess()
 {
 
@@ -522,6 +607,10 @@ bool Target::continueProcess()
             continueRequestedBp = true;
         bpHit = std::nullopt;
     }
+    // we clear the stack frame information
+    stackframeId = 0;
+    stateToStackFrame.clear();
+    idToStackFrameInfo.clear();
     paused = false;
     childRuntime->continueDebug();
     return true;
