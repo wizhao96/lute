@@ -20,3 +20,5 @@ end)
 while not done do
 	task.wait(0.01)
 end
+-- just for checking after we joined both threads
+total_sum += 1
