@@ -431,6 +431,7 @@ TEST_SUITE("Debug")
                 CHECK(frame.column == column);
                 CHECK(frame.line == line);
                 CHECK(frame.name == name);
+                CHECK(frame.sourcePath == sourcePath);
             }
             bool continued = target.continueProcess();
             CHECK(continued);

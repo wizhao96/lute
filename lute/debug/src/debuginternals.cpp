@@ -488,7 +488,7 @@ std::optional<std::vector<Thread>> Target::getThreads() const
     std::vector<Thread> result;
     for (auto& [L, thread] : stateToThread)
     {
-        if (lua_costatus(childRuntime->GL, L) != LUA_COFIN)
+        if (lua_costatus(childRuntime->GL, L) != LUA_COFIN && lua_costatus(childRuntime->GL, L) != LUA_COERR)
             result.push_back(thread);
     }
     return result;
@@ -517,7 +517,7 @@ std::optional<StackFrame> Target::getStackFrameHelper(int threadId, int level)
         frame.name = ar.name ? ar.name : "(anonymous)";
         if (ar.source)
         {
-            frame.sourcePath = ar.source;
+            frame.sourcePath = getSourceFromChunk(ar.source);
             frame.line = ar.currentline;
         }
         else
