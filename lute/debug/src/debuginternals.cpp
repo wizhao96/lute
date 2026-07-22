@@ -513,12 +513,8 @@ std::optional<StackFrame> Target::getStackFrameHelper(int threadId, int level)
         lua_Debug ar = {};
         if (!lua_getinfo(threadIdToState[threadId], level, "sln", &ar))
             return std::nullopt;
-        // We want to differentiate between main and all other funcitons. We do 
-        // this be checking where that stack frame is defined (which is 0), unlike normal functions.
-        if (ar.linedefined == 0)
-            frame.name = "main";
-        else
-            frame.name = ar.name ? ar.name : "(anonymous)";
+        
+        frame.name = ar.name ? ar.name : "(anonymous)";
         if (ar.source)
         {
             frame.sourcePath = ar.source;
