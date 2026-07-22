@@ -229,14 +229,13 @@ static int target_launch(lua_State* L)
     if (lua_istable(L, 4))
     {
         if (auto ref = getOptionalCallback(L, 4, "onBreakpointHit"))
-            config.onBreakpointHit = [ref, runtime](int threadId, const debug::Breakpoint& bp)
+            config.onBreakpointHit = [ref, runtime](const debug::Thread& thread, const debug::Breakpoint& bp)
             {
                 runtime->scheduleLuauCallback(
                     ref,
-                    [threadId, bp](lua_State* L)
+                    [thread, bp](lua_State* L)
                     {
-                        checkStack(L, 1);
-                        lua_pushinteger(L, threadId);
+                        pushThread(L, thread);
                         pushBreakpoint(L, bp);
                         return 2;
                     }

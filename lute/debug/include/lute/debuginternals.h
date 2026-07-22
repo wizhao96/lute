@@ -35,18 +35,6 @@ struct Breakpoint
 };
 
 // Each Thread represents one coroutine in our Lute runtime.
-struct LaunchConfig
-{
-    // onBreakpointInstall() signals we tried to install a bp, regardless of ultimate success or failure
-    // the ultimate result of installation is passed into bp.
-    std::function<void(const Breakpoint& bp)> onBreakpointInstall;
-    std::function<void(const Breakpoint& bp)> onBreakpointUninstall;
-    std::function<void(int threadId, const Breakpoint& bp)> onBreakpointHit;
-    std::function<void(bool success)> onExit;
-    std::function<void()> onPause;
-};
-
-// Each Thread represents one coroutine in our Lute runtime.
 struct Thread
 {
     int id = -1;
@@ -67,6 +55,8 @@ struct StackFrame
 
 struct LaunchConfig
 {
+    // onBreakpointInstall() signals we tried to install a bp, regardless of ultimate success or failure
+    // the ultimate result of installation is passed into bp.
     std::function<void(const Breakpoint& bp)> onBreakpointInstall;
     std::function<void(const Breakpoint& bp)> onBreakpointUninstall;
     std::function<void(const Thread& thread, const Breakpoint& bp)> onBreakpointHit;
