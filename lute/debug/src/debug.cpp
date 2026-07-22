@@ -229,7 +229,19 @@ static int target_launch(lua_State* L)
     if (lua_istable(L, 4))
     {
         if (auto ref = getOptionalCallback(L, 4, "onBreakpointHit"))
-            config.onBreakpointHit = makeBreakpointCallback(ref, runtime);
+            config.onBreakpointHit = [ref, runtime](int threadId, const debug::Breakpoint& bp)
+            {
+                runtime->scheduleLuauCallback(
+                    ref,
+                    [threadId, bp](lua_State* L)
+                    {
+                        checkStack(L, 1);
+                        lua_pushinteger(L, threadId);
+                        pushBreakpoint(L, bp);
+                        return 2;
+                    }
+                );
+            };
         if (auto ref = getOptionalCallback(L, 4, "onBreakpointInstall"))
             config.onBreakpointInstall = makeBreakpointCallback(ref, runtime);
         if (auto ref = getOptionalCallback(L, 4, "onBreakpointUninstall"))
@@ -244,6 +256,19 @@ static int target_launch(lua_State* L)
                     {
                         lua_pushboolean(L, success);
                         return 1;
+                    }
+                );
+            };
+        }
+        if (auto ref = getOptionalCallback(L, 4, "onPause"))
+        {
+            config.onPause = [ref, runtime]()
+            {
+                runtime->scheduleLuauCallback(
+                    ref,
+                    [](lua_State*)
+                    {
+                        return 0;
                     }
                 );
             };
