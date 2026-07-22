@@ -409,9 +409,10 @@ void Target::installBpHitCallback()
             target->stoppedThread = L;
             lua_break(L);
             auto [installed, uninstalled] = target->modifyPendingBreakpoints(target->scriptThread);
+            debug::Thread thread = target->stateToThread[L];
             lock.unlock();
             if (target->launchConfig.onBreakpointHit)
-                target->launchConfig.onBreakpointHit(bp.value());
+                target->launchConfig.onBreakpointHit(thread.id, bp.value());
             for (auto& bp : installed)
                 target->launchConfig.onBreakpointInstall(bp);
             for (auto& bp : uninstalled)
@@ -513,7 +514,7 @@ std::optional<StackFrame> Target::getStackFrameHelper(int threadId, int level)
         lua_Debug ar = {};
         if (!lua_getinfo(threadIdToState[threadId], level, "sln", &ar))
             return std::nullopt;
-        
+
         frame.name = ar.name ? ar.name : "(anonymous)";
         if (ar.source)
         {

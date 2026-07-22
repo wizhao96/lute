@@ -40,7 +40,7 @@ struct LaunchConfig
     // the ultimate result of installation is passed into bp.
     std::function<void(const Breakpoint& bp)> onBreakpointInstall;
     std::function<void(const Breakpoint& bp)> onBreakpointUninstall;
-    std::function<void(const Breakpoint& bp)> onBreakpointHit;
+    std::function<void(int threadId, const Breakpoint& bp)> onBreakpointHit;
     std::function<void(bool success)> onExit;
     std::function<void()> onPause;
 };
@@ -136,7 +136,7 @@ private:
     // stack frame ID information is reset upon every continue(). The base id resets to 0 as well.
     int stackframeId = 0;
     std::unordered_map<int, std::unordered_map<int, StackFrame>> stateToStackFrame; // thread id -> level -> stackFrame
-    std::unordered_map<int, std::pair<int, int>> idToStackFrameInfo;                    // stack frame id -> stack frame's (thread id, level)
+    std::unordered_map<int, std::pair<int, int>> idToStackFrameInfo;                // stack frame id -> stack frame's (thread id, level)
 
     // for require contexts
     std::unique_ptr<RequireCtx> requireCtx;
