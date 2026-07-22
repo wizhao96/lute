@@ -1,9 +1,9 @@
+local debugger = require("@lute/debugger")
 local dapStream = require("./dapStream")
 local dapTypes = require("./dapTypes")
-local debug = require("@lute/debug")
 local json = require("@std/json")
 
-local function debugToDapBreakpoint(breakpoint: debug.Breakpoint): dapTypes.Breakpoint
+local function debugToDapBreakpoint(breakpoint: debugger.Breakpoint): dapTypes.Breakpoint
 	local dapBreakpoint: dapTypes.Breakpoint = {
 		id = breakpoint.id,
 		verified = breakpoint.status == "installed",
@@ -22,7 +22,7 @@ local function debugToDapBreakpoint(breakpoint: debug.Breakpoint): dapTypes.Brea
 end
 
 local function clearAndSetBreakpoints(
-	target: debug.Target,
+	target: debugger.Target,
 	sourcePath: string,
 	newBreakpoints: { dapTypes.SourceBreakpoint }?
 ): { dapTypes.Breakpoint }
@@ -43,16 +43,16 @@ end
 
 local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 	local ioSession = dapStream.makeDapStreamSession(reader, writer)
-	local target = debug.newTarget()
-	local launchCallbacks: debug.LaunchConfig = {
-		onBreakpointHit = function(bp: debug.Breakpoint)
+	local target = debugger.newTarget()
+	local launchCallbacks: debugger.LaunchConfig = {
+		onBreakpointHit = function(bp: debugger.Breakpoint)
 			ioSession.writeEvent("stopped", {
 				reason = "breakpoint",
 				threadId = 1,
 				hitBreakpointIds = { bp.id },
 			})
 		end,
-		onBreakpointInstall = function(bp: debug.Breakpoint)
+		onBreakpointInstall = function(bp: debugger.Breakpoint)
 			ioSession.writeEvent("breakpoint", {
 				reason = "changed",
 				breakpoint = debugToDapBreakpoint(bp),

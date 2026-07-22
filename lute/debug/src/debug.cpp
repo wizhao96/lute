@@ -71,6 +71,35 @@ static int pushBreakpoint(lua_State* L, const debug::Breakpoint& bp)
     return 1;
 }
 
+static int pushThread(lua_State* L, const debug::Thread& thread)
+{
+    checkStack(L, 2);
+    lua_createtable(L, 0, 2);
+    lua_pushinteger(L, thread.id);
+    lua_setfield(L, -2, "id");
+    lua_pushstring(L, thread.name.c_str());
+    lua_setfield(L, -2, "line");
+    return 1;
+}
+
+
+static int pushStackFrame(lua_State* L, const debug::StackFrame& frame)
+{
+    checkStack(L, 2);
+    lua_createtable(L, 0, 5);
+    lua_pushinteger(L, frame.id);
+    lua_setfield(L, -2, "id");
+    lua_pushstring(L, frame.name.c_str());
+    lua_setfield(L, -2, "name");
+    lua_pushstring(L, frame.sourcePath.c_str());
+    lua_setfield(L, -2, "sourcePath");
+    lua_pushinteger(L, frame.line);
+    lua_setfield(L, -2, "line");
+    lua_pushinteger(L, frame.column);
+    lua_setfield(L, -2, "column");
+    return 1;
+}
+
 static int target_setBreakpoint(lua_State* L)
 {
     debug::Target* target = getTarget(L, 1);
@@ -235,6 +264,89 @@ static int target_continueProcess(lua_State* L)
     return 1;
 }
 
+static int target_pauseProcess(lua_State* L)
+{
+    auto target = getTarget(L, 1);
+    bool continued = target->pauseProcess();
+    checkStack(L, 1);
+    lua_pushboolean(L, continued);
+    return 1;
+}
+
+static int target_getLoadedSources(lua_State* L)
+{
+    auto target = getTarget(L, 1);
+    std::vector<std::string> sources = target->getLoadedSources();
+    checkStack(L, 1);
+    lua_createtable(L, sources.size(), 0);
+    for (int i = 0; i < (int)sources.size(); i++)
+    {
+        checkStack(L, 1);
+        lua_pushstring(L, sources[i].c_str());
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
+static int target_getThreads(lua_State* L)
+{
+    auto target = getTarget(L, 1);
+    std::optional<std::vector<debug::Thread>> threads = target->getThreads();
+    if (!threads)
+    {
+        checkStack(L, 1);
+        lua_pushnil(L);
+        return 1;
+    }
+    checkStack(L, 1);
+    lua_createtable(L, threads->size(), 0);
+    for (int i = 0; i < (int)threads->size(); i++)
+    {
+        pushThread(L, threads->at(i));
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
+static int target_getStackFrame(lua_State* L)
+{
+    auto target = getTarget(L, 1);
+    int threadId = luaL_checkinteger(L, 2);
+    int level = luaL_checkinteger(L, 2);
+    std::optional<debug::StackFrame> stackframe = target->getStackFrame(threadId, level);
+    if (!stackframe)
+    {
+        checkStack(L, 1);
+        lua_pushnil(L);
+        return 1;
+    }
+    return pushStackFrame(L, *stackframe);
+}
+
+static int target_getStackTrace(lua_State* L)
+{
+    auto target = getTarget(L, 1);
+    int threadId = luaL_checkinteger(L, 2);
+    int startLevel = (int)luaL_optinteger(L, 3, 0);
+    int numFrames = (int)luaL_optinteger(L, 4, 0);
+    std::optional<std::vector<debug::StackFrame>> stackframes = target->getStackTrace(threadId, startLevel, numFrames);
+    if (!stackframes)
+    {
+        checkStack(L, 1);
+        lua_pushnil(L);
+        return 1;
+    }
+    checkStack(L, 1);
+    lua_createtable(L, stackframes->size(), 0);
+    for (int i = 0; i < (int)stackframes->size(); i++)
+    {
+        pushStackFrame(L, stackframes->at(i));
+        lua_rawseti(L, -2, i + 1);
+    }
+    return 1;
+}
+
+
 static int debug_newTarget(lua_State* L)
 {
     Runtime* runtime = getRuntime(L);
@@ -252,7 +364,12 @@ static const std::unordered_map<std::string, lua_CFunction> kTargetMethods = {
     {"getBreakpointById", target_getBreakpointById},
     {"getBreakpointBySourceLine", target_getBreakpointBySourceLine},
     {"launch", target_launch},
-    {"continueProcess", target_continueProcess}
+    {"continueProcess", target_continueProcess},
+    {"pauseProcess", target_pauseProcess},
+    {"getLoadedSources", target_getLoadedSources},
+    {"getThreads", target_getThreads},
+    {"getStackFrame", target_getStackFrame},
+    {"getStackTrace", target_getStackTrace}
 };
 
 static void initializeTarget(lua_State* L)
