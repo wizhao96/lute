@@ -69,7 +69,7 @@ export type Target = {
 	--- Pauses a target script if it is running at the earliest possible opportunity. Return `true`
 	--- if the target was actually running and `false` if it was not.
 	pauseProcess: (self: Target) -> boolean,
-	--- Gets all Luau sources that have been loaded onto the debugger
+	--- Gets all Luau sources that have been loaded onto the debugger.
 	getLoadedSources: (self: Target) -> { string },
 	--- Gets a list of all Luau coroutines that are being used by the script. Returns `nil` if script is running.
 	getThreads: (self: Target) -> { Thread }?,

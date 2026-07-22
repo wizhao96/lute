@@ -1,10 +1,11 @@
+#include "lute/debuginternals.h"
+
 #include <chrono>
 #include <future>
 #include <thread>
 #include <vector>
 
 #include "debugfixture.h"
-#include "debugger.h"
 #include "doctest.h"
 
 using namespace debug;

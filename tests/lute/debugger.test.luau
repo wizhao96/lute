@@ -31,7 +31,7 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 		check.eq(bp.status, "pendingInstall")
 		local numHits, onFinished, numBreakpointsInstalled = 0, false, 0
 		local targetLaunched = target:launch(fixturePath, {}, {
-			onBreakpointHit = function(_bp)
+			onBreakpointHit = function(_threadId, _bp)
 				numHits += 1
 				local continued = target:continueProcess()
 				check.that(continued)
@@ -87,7 +87,7 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 		check.eq(bpGet, nil)
 		local numHitsBp2, numHitsBp3, onFinished, numBreakpointsUninstalled = 0, 0, false, 0
 		local targetLaunched = target:launch(fixturePath, {}, {
-			onBreakpointHit = function(bp)
+			onBreakpointHit = function(_threadId, bp)
 				if bp.id == bp2.id then
 					check.eq(bp.id, bp2.id)
 					check.eq(bp.line, 7)
@@ -162,5 +162,45 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 			end, 1),
 			true
 		)
+	end)
+	-- this test case focuses on multiple sources
+	suite:case("multisource", function(check)
+		local target = debug.newTarget()
+		check.eq(typeof(target), "Target")
+		local mainPath = path.format(path.join(proc.cwd(), "tests/src/debug/require_main.luau"))
+		local triangPath = path.format(path.join(proc.cwd(), "tests/src/debug/require_triang.luau"))
+		local bp1 = target:setBreakpoint(mainPath, 5)
+		local _bp2 = target:setBreakpoint(triangPath, 5)
+		local bpHit1 = 0
+		local bpHit2 = 0
+		local onFinished = false
+		local targetLaunched = target:launch(mainPath, {}, {
+			onBreakpointHit = function(_threadId, bp)
+				if bp.id == bp1.id then
+					bpHit1 += 1
+				else
+					bpHit2 += 1
+				end
+				local continued = target:continueProcess()
+				check.that(continued)
+			end,
+			onExit = function(status)
+				if status then
+					onFinished = true
+				end
+			end,
+		})
+		check.that(targetLaunched)
+		check.eq(
+			waitUntil(function()
+				return onFinished
+			end),
+			true
+		)
+		check.eq(bpHit1, 5)
+		check.eq(bpHit2, 15)
+		local source = target:getLoadedSources()
+		check.that(table.find(source, mainPath))
+		check.that(table.find(source, triangPath))
 	end)
 end)
