@@ -13,10 +13,26 @@ export type Breakpoint = {
 	status: BreakpointStatus,
 }
 
+--- A thread of execution, which represents one coroutine running on the runtime
+export type Thread = {
+	id: number,
+	name: string,
+}
+
+--- A stack frame of the execution. New stack frames are recreated every time execution is paused, and
+--- ids are reused.
+export type StackFrame = {
+	id: number,
+	name: string,
+	sourcePath: string,
+	line: number,
+	column: number,
+}
+
 --- A set of callbacks that we configure before launching our debugger
 export type LaunchConfig = {
-	--- called when a breakpoint `bp` is hit; execution is paused until continueProcess() is called
-	onBreakpointHit: ((bp: Breakpoint) -> ())?,
+	--- called when a breakpoint `bp` is hit on thread `threadId`; execution is paused until continueProcess() is called
+	onBreakpointHit: ((threadId: number, bp: Breakpoint) -> ())?,
 	--- called when breakpoint `bp` is attempted to be installed in the VM.
 	--- whether this attempt is successful or not is reflected in the status of bp.
 	onBreakpointInstall: ((bp: Breakpoint) -> ())?,
@@ -24,6 +40,8 @@ export type LaunchConfig = {
 	onBreakpointUninstall: ((bp: Breakpoint) -> ())?,
 	--- called when the debugged script exits. `success` reflects if the script exited without errors.
 	onExit: ((success: boolean) -> ())?,
+	--- called when a pauseProcess() request actually stops all threads from execution
+	onPause: (()->())?,
 }
 
 --- A `Target` represents the target program under the debugger.
@@ -48,6 +66,20 @@ export type Target = {
 	--- Continues a target script if it has been stopped. Return `true` if the target was actually stopped
 	--- and `false` if it was not.
 	continueProcess: (self: Target) -> boolean,
+	--- Pauses a target script if it is running at the earliest possible opportunity. Return `true`
+	--- if the target was actually running and `false` if it was not.
+	pauseProcess: (self: Target) -> boolean,
+	--- Gets all Luau sources that have been loaded onto the debugger
+	getLoadedSources: (self: Target) -> { string },
+	--- Gets a list of all Luau coroutines that are being used by the script. Returns `nil` if script is running.
+	getThreads: (self: Target) -> { Thread }?,
+	--- Gets a stack frame on a coroutine with `threadId` at level `level` (where 0 is the shallowest). Return `nil`
+	--- if script is running or no such stack frame exists at that level.
+	getStackFrame: (self: Target, threadId: number, level: number) -> StackFrame?,
+	--- Gets a stack trace on a coroutine with `threadId` starting from level `startLevel` and going for at maximum
+	--- `numFrames` frames. If `startLevel` is not specified, we start at level 0. If `numFrames` is not specified,
+	--- we return until the deepest frame.
+	getStackTrace: (self: Target, threadId: number, startLevel: number?, numFrames: number?) -> {StackFrame}?,
 }
 
 --- Create a new Target handle on the current VM.
