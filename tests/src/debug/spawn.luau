@@ -1,6 +1,5 @@
 local task = require("@lute/task")
 local total_sum = 0
-local done = false
 
 task.spawn(function()
     for i = 1, 5 do
@@ -14,10 +13,9 @@ task.spawn(function()
         task.wait(0)
         total_sum += 1
     end
-    done = true
 end)
 
-while not done do
+while total_sum ~= 10 do
 	task.wait(0.01)
 end
 -- just for checking after we joined both threads

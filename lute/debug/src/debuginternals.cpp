@@ -385,9 +385,9 @@ void Target::installBpHitCallback()
         auto target = static_cast<Target*>(lua_callbacks(L)->userdata);
         // We land on the same instruction after a continue() after hitting a bp so we basically don't do anything
         std::unique_lock lock(target->targetMutex);
-        if (target->continueRequestedBp)
+        if (auto it = target->continueRequestedBp.find(L); it != target->continueRequestedBp.end())
         {
-            target->continueRequestedBp = false;
+            target->continueRequestedBp.erase(it);
             return;
         }
         lua_Debug info = {};
@@ -582,27 +582,27 @@ bool Target::continueProcess()
     std::unique_lock lock(targetMutex);
     if (!launched || !paused)
         return false;
+    // this clears the interrupts that triggers when the process is paused from client request
+    // in case it has not actually been triggered.
+    lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
+    cb->interrupt = nullptr;
     if (stoppedThread)
     {
+        // we are continuing on a breakpoint and so might need to flag continueRequestedBp.
+        if (bpHit)
+        {
+            // we need to check if our breakpoint is still currently installed after
+            // onBreakpointHit() callback
+            std::optional<Breakpoint> currentBp = getBreakpointByIdHelper(bpHit->id);
+            if (currentBp && currentBp->status == BreakpointStatus::Installed)
+                continueRequestedBp.insert(stoppedThread);
+            bpHit = std::nullopt;
+        }
         childRuntime->runningThreads.push_back({true, getRefForThread(stoppedThread), 0});
         // This schedule() wakes up the runtime in runContinuously() to re-run runToCompletion() in case that has exited. This is a no-op if
         // runToCompletion() has not exited.
         childRuntime->schedule([]() {});
         stoppedThread = nullptr;
-    }
-    // this clears the interrupts that triggers when the process is paused from client request
-    // in case it has not actually been triggered.
-    lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
-    cb->interrupt = nullptr;
-    // we are continuing on a breakpoint and so might need to flag continueRequestedBp.
-    if (bpHit)
-    {
-        // we need to check if our breakpoint is still currently installed after
-        // onBreakpointHit() callback
-        std::optional<Breakpoint> currentBp = getBreakpointByIdHelper(bpHit->id);
-        if (currentBp && currentBp->status == BreakpointStatus::Installed)
-            continueRequestedBp = true;
-        bpHit = std::nullopt;
     }
     // we clear the stack frame information
     stackframeId = 0;
