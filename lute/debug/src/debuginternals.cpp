@@ -84,7 +84,7 @@ Breakpoint Target::setBreakpoint(std::string sourcePath, int line)
         installBreakpoint(childRuntime->GL, it->second);
         Breakpoint bpCopy = it->second;
         lock.unlock();
-        if (launchConfig.onBreakpointInstall)
+        if (bpCopy.status != BreakpointStatus::PendingInstall && launchConfig.onBreakpointInstall)
             launchConfig.onBreakpointInstall(bpCopy);
         return bpCopy;
     }
@@ -260,7 +260,7 @@ std::pair<std::vector<Breakpoint>, std::vector<Breakpoint>> Target::modifyPendin
         if (bp.status == BreakpointStatus::PendingInstall)
         {
             installBreakpoint(L, bp);
-            if (launchConfig.onBreakpointInstall)
+            if (bp.status != BreakpointStatus::PendingInstall && launchConfig.onBreakpointInstall)
                 installedBpsCallback.emplace_back(bp);
         }
         if (bp.status == BreakpointStatus::PendingUninstall)
