@@ -34,6 +34,7 @@ struct Breakpoint
     explicit Breakpoint(int id, std::string sourcePath, int line, BreakpointStatus status);
 };
 
+// Each Thread represents one coroutine in our Lute runtime.
 struct LaunchConfig
 {
     // onBreakpointInstall() signals we tried to install a bp, regardless of ultimate success or failure
@@ -45,8 +46,7 @@ struct LaunchConfig
     std::function<void()> onPause;
 };
 
-// Threads are DAP structures but actually represent
-// coroutines in our Lute runtime
+// Each Thread represents one coroutine in our Lute runtime.
 struct Thread
 {
     int id = -1;
@@ -63,6 +63,15 @@ struct StackFrame
     std::string sourcePath;
     int line = 0;
     int column = 0;
+};
+
+struct LaunchConfig
+{
+    std::function<void(const Breakpoint& bp)> onBreakpointInstall;
+    std::function<void(const Breakpoint& bp)> onBreakpointUninstall;
+    std::function<void(const Thread& thread, const Breakpoint& bp)> onBreakpointHit;
+    std::function<void(bool success)> onExit;
+    std::function<void()> onPause;
 };
 
 struct Target

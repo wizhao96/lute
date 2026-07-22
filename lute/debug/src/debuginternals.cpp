@@ -412,7 +412,7 @@ void Target::installBpHitCallback()
             debug::Thread thread = target->stateToThread[L];
             lock.unlock();
             if (target->launchConfig.onBreakpointHit)
-                target->launchConfig.onBreakpointHit(thread.id, bp.value());
+                target->launchConfig.onBreakpointHit(thread, bp.value());
             for (auto& bp : installed)
                 target->launchConfig.onBreakpointInstall(bp);
             for (auto& bp : uninstalled)
