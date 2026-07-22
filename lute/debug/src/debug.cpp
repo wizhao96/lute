@@ -78,7 +78,7 @@ static int pushThread(lua_State* L, const debug::Thread& thread)
     lua_pushinteger(L, thread.id);
     lua_setfield(L, -2, "id");
     lua_pushstring(L, thread.name.c_str());
-    lua_setfield(L, -2, "line");
+    lua_setfield(L, -2, "name");
     return 1;
 }
 
