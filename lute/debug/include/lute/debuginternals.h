@@ -92,7 +92,7 @@ struct Target
     std::optional<Breakpoint> getBreakpointBySourceLine(std::string source, int line) const;
 
     // For inspection::
-    std::optional<std::vector<Thread>> getThreads() const;
+    std::vector<Thread> getThreads() const;
     std::optional<StackFrame> getStackFrame(int threadId, int level);
     std::optional<std::vector<StackFrame>> getStackTrace(int threadId, int startLevel = 0, int maximumLevel = 0);
 

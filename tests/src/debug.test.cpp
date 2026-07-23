@@ -339,17 +339,16 @@ TEST_SUITE("Debug")
             {
                 CHECK(thread.id == 1);
                 hitsBp1++;
-                std::optional<std::vector<Thread>> threads = target.getThreads();
-                REQUIRE(threads.has_value());
-                maxThreadsSeen = std::max(maxThreadsSeen, (int)threads->size());
-                if (threads->size() == 3)
+                const std::vector<Thread>& threads = target.getThreads();
+                maxThreadsSeen = std::max(maxThreadsSeen, (int)threads.size());
+                if (threads.size() == 3)
                 {
                     Thread t0(0, "Thread 0");
                     Thread t1(1, "Thread 1");
                     Thread t2(0, "Thread 2");
-                    CHECK(std::find(threads->begin(), threads->end(), t0) != threads->end());
-                    CHECK(std::find(threads->begin(), threads->end(), t1) != threads->end());
-                    CHECK(std::find(threads->begin(), threads->end(), t2) != threads->end());
+                    CHECK(std::find(threads.begin(), threads.end(), t0) != threads.end());
+                    CHECK(std::find(threads.begin(), threads.end(), t1) != threads.end());
+                    CHECK(std::find(threads.begin(), threads.end(), t2) != threads.end());
                 }
             }
             else if (bp.id == bp2.id)
@@ -360,15 +359,13 @@ TEST_SUITE("Debug")
             else
             {
                 // after joining all threads, we only have one left over (the main coroutine)
-                std::optional<std::vector<Thread>> threads = target.getThreads();
+                const std::vector<Thread>& threads = target.getThreads();
                 CHECK(thread.id == 0);
-                REQUIRE(threads.has_value());
-                CHECK(threads->size() == 1);
-                CHECK(threads->at(0) == Thread(0, "Thread 0"));
+                CHECK(threads.size() == 1);
+                CHECK(threads.at(0) == Thread(0, "Thread 0"));
             }
             target.continueProcess();
             // we shouldn't get threads when things are crunning
-            REQUIRE(!target.getThreads().has_value());
         };
         target.launch(fixturePath, {}, config);
         REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
@@ -387,10 +384,9 @@ TEST_SUITE("Debug")
         int hits = 0;
         config.onBreakpointHit = [&](const Thread&, const Breakpoint& bp)
         {
-            std::optional<std::vector<Thread>> threads = target.getThreads();
-            REQUIRE(threads.has_value());
-            CHECK(threads->size() == 1);
-            int threadId = threads->at(0).id;
+            const std::vector<Thread>& threads = target.getThreads();
+            CHECK(threads.size() == 1);
+            int threadId = threads.at(0).id;
             std::optional<std::vector<StackFrame>> stacktrace = target.getStackTrace(threadId);
             REQUIRE(stacktrace.has_value());
             // our stack trace should from the most deep stack frame go main -> a -> b -> a -> b ....

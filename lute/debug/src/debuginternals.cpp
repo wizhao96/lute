@@ -482,11 +482,9 @@ void Target::installThreadCallback()
     };
 }
 
-std::optional<std::vector<Thread>> Target::getThreads() const
+std::vector<Thread> Target::getThreads() const
 {
     std::unique_lock lock(targetMutex);
-    if (!paused)
-        return std::nullopt;
     std::vector<Thread> result;
     for (auto& [L, thread] : stateToThread)
     {
