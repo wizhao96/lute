@@ -41,7 +41,7 @@ export type LaunchConfig = {
 	--- called when the debugged script exits. `success` reflects if the script exited without errors.
 	onExit: ((success: boolean) -> ())?,
 	--- called when a pauseProcess() request actually stops all threads from execution
-	onPause: (()->())?,
+	onPause: (() -> ())?,
 }
 
 --- A `Target` represents the target program under the debugger.
@@ -71,15 +71,15 @@ export type Target = {
 	pauseProcess: (self: Target) -> boolean,
 	--- Gets all Luau sources that have been loaded onto the debugger.
 	getLoadedSources: (self: Target) -> { string },
-	--- Gets a list of all Luau coroutines that are being used by the script. Returns `nil` if script is running.
-	getThreads: (self: Target) -> { Thread }?,
+	--- Gets a list of all Luau coroutines that are being used by the script.
+	getThreads: (self: Target) -> { Thread },
 	--- Gets a stack frame on a coroutine with `threadId` at level `level` (where 0 is the shallowest). Return `nil`
 	--- if script is running or no such stack frame exists at that level.
 	getStackFrame: (self: Target, threadId: number, level: number) -> StackFrame?,
 	--- Gets a stack trace on a coroutine with `threadId` starting from level `startLevel` and going for at maximum
 	--- `numFrames` frames. If `startLevel` is not specified, we start at level 0. If `numFrames` is not specified,
 	--- we return until the deepest frame.
-	getStackTrace: (self: Target, threadId: number, startLevel: number?, numFrames: number?) -> {StackFrame}?,
+	getStackTrace: (self: Target, threadId: number, startLevel: number?, numFrames: number?) -> { StackFrame }?,
 }
 
 --- Create a new Target handle on the current VM.

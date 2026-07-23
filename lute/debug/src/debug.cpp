@@ -315,18 +315,12 @@ static int target_getLoadedSources(lua_State* L)
 static int target_getThreads(lua_State* L)
 {
     auto target = getTarget(L, 1);
-    std::optional<std::vector<debug::Thread>> threads = target->getThreads();
-    if (!threads)
-    {
-        checkStack(L, 1);
-        lua_pushnil(L);
-        return 1;
-    }
+    const std::vector<debug::Thread>& threads = target->getThreads();
     checkStack(L, 1);
-    lua_createtable(L, threads->size(), 0);
-    for (int i = 0; i < (int)threads->size(); i++)
+    lua_createtable(L, threads.size(), 0);
+    for (int i = 0; i < (int)threads.size(); i++)
     {
-        pushThread(L, threads->at(i));
+        pushThread(L, threads.at(i));
         lua_rawseti(L, -2, i + 1);
     }
     return 1;

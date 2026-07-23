@@ -224,7 +224,6 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 					bpHit2 += 1
 				end
 				local threads = target:getThreads()
-				assert(threads)
 				maxThreads = math.max(maxThreads, #threads)
 				local continued = target:continueProcess()
 				check.that(continued)
@@ -258,7 +257,6 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 			onBreakpointHit = function(thread, bp)
 				hits += 1
 				local threads = target:getThreads()
-				assert(threads)
 				check.eq(#threads, 1)
 				local stacktrace = target:getStackTrace(threads[1].id)
 				assert(stacktrace)
