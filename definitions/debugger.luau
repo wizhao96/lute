@@ -31,8 +31,8 @@ export type StackFrame = {
 
 --- A set of callbacks that we configure before launching our debugger
 export type LaunchConfig = {
-	--- called when a breakpoint `bp` is hit on thread `threadId`; execution is paused until continueProcess() is called
-	onBreakpointHit: ((threadId: number, bp: Breakpoint) -> ())?,
+	--- called when a breakpoint `bp` is hit on thread `thread`; execution is paused until continueProcess() is called
+	onBreakpointHit: ((thread: Thread, bp: Breakpoint) -> ())?,
 	--- called when breakpoint `bp` is attempted to be installed in the VM.
 	--- whether this attempt is successful or not is reflected in the status of bp.
 	onBreakpointInstall: ((bp: Breakpoint) -> ())?,
