@@ -287,6 +287,7 @@ void Runtime::schedule(std::function<void()> f)
     continuations.push_back(std::move(f));
 
     runLoopCv.notify_one();
+    uv_async_send(&wakeup);
 }
 
 void Runtime::scheduleLuauError(std::shared_ptr<Ref> ref, std::string error)
@@ -306,6 +307,7 @@ void Runtime::scheduleLuauError(std::shared_ptr<Ref> ref, std::string error)
     );
 
     runLoopCv.notify_one();
+    uv_async_send(&wakeup);
 }
 
 void Runtime::scheduleLuauResume(std::shared_ptr<Ref> ref, std::function<int(lua_State*)> cont)
@@ -329,6 +331,7 @@ void Runtime::scheduleLuauResume(std::shared_ptr<Ref> ref, std::function<int(lua
     );
 
     runLoopCv.notify_one();
+    uv_async_send(&wakeup);
 }
 
 void Runtime::scheduleLuauCallback(std::shared_ptr<Ref> callbackRef, std::function<int(lua_State*)> argPusher)
