@@ -261,13 +261,14 @@ static int target_launch(lua_State* L)
         }
         if (auto ref = getOptionalCallback(L, 4, "onPause"))
         {
-            config.onPause = [ref, runtime]()
+            config.onPause = [ref, runtime](const debug::Thread& thread)
             {
                 runtime->scheduleLuauCallback(
                     ref,
-                    [](lua_State*)
+                    [thread](lua_State* L)
                     {
-                        return 0;
+                        pushThread(L, thread);
+                        return 1;
                     }
                 );
             };
