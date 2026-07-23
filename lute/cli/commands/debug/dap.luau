@@ -45,11 +45,18 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 	local ioSession = dapStream.makeDapStreamSession(reader, writer)
 	local target = debugger.newTarget()
 	local launchCallbacks: debugger.LaunchConfig = {
-		onBreakpointHit = function(bp: debugger.Breakpoint)
+		onBreakpointHit = function(thread: debugger.Thread, bp: debugger.Breakpoint)
 			ioSession.writeEvent("stopped", {
 				reason = "breakpoint",
-				threadId = 1,
+				threadId = thread.id,
 				hitBreakpointIds = { bp.id },
+				allThreadsStopped = true,
+			})
+		end,
+		onPause = function()
+			ioSession.writeEvent("stopped", {
+				reason = "pause",
+				allThreadsStopped = true,
 			})
 		end,
 		onBreakpointInstall = function(bp: debugger.Breakpoint)
@@ -88,7 +95,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			ioSession.writeResponse(reqSeq, true, command)
 			if launchConfig then
 				target:launch(launchConfig.program, launchConfig.args, launchCallbacks)
-				ioSession.writeResponse(launchSeq, true, command)
+				ioSession.writeResponse(launchSeq, true, "launch")
 			end
 		elseif command == "setBreakpoints" then
 			local args = request.arguments :: json.Object
@@ -102,6 +109,9 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			})
 		elseif command == "continue" then
 			target:continueProcess()
+			ioSession.writeResponse(reqSeq, true, command)
+		elseif command == "pause" then
+			target:pauseProcess()
 			ioSession.writeResponse(reqSeq, true, command)
 		elseif command == "launch" then
 			local args = request.arguments :: dapTypes.LaunchArgs?
@@ -117,26 +127,61 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 					ioSession.writeResponse(reqSeq, true, command)
 				end
 			end
+		elseif command == "loadedSources" then
+			local sources = target:getLoadedSources()
+			local dapSources = {}
+			for _, source in sources do
+				table.insert(dapSources, {
+					path = source,
+					name = source:match("[^/\\]+$"),
+				})
+			end
+			ioSession.writeResponse(reqSeq, true, command, nil, {
+				sources = dapSources,
+			})
 		-- dummy handlers for threads and stackTrace for now
 		elseif command == "threads" then
+			local threads = target:getThreads()
+			if not threads then
+				ioSession.writeResponse(reqSeq, false, command, "notStopped")
+				continue
+			end
+			assert(threads)
+			local dapThreads = {}
+			for _, thread in threads do
+				table.insert(dapThreads, {
+					id = thread.id,
+					name = thread.name,
+				})
+			end
 			ioSession.writeResponse(reqSeq, true, command, nil, {
-				threads = {
-					{ id = 1, name = "main thread" },
-				},
+				threads = dapThreads,
 			})
 		elseif command == "stackTrace" then
-			local launchPath = assert(launchConfig, "not launched")
-			ioSession.writeResponse(reqSeq, true, command, nil, {
-				stackFrames = {
-					{
-						id = 1,
-						name = "main",
-						source = { path = launchPath.program },
-						line = 1,
-						column = 0,
+			local args = request.arguments :: json.Object
+			local threadId = args.threadId :: number
+			local startFrame = args.startFrame :: number?
+			local levels = args.levels :: number?
+			local stackTrace = target:getStackTrace(threadId, startFrame, levels)
+			if not stackTrace then
+				ioSession.writeResponse(reqSeq, false, command, "notStopped")
+				continue
+			end
+			assert(stackTrace)
+			local dapStackTrace = {}
+			for _, frame in stackTrace do
+				table.insert(dapStackTrace, {
+					id = frame.id,
+					name = frame.name,
+					source = {
+						path = frame.sourcePath,
 					},
-				},
-				totalFrames = 1,
+					line = frame.line,
+					column = frame.column,
+				})
+			end
+			ioSession.writeResponse(reqSeq, true, command, nil, {
+				stackFrames = dapStackTrace,
 			})
 		elseif command == "terminate" or command == "disconnect" then
 			ioSession.writeResponse(reqSeq, true, command)
