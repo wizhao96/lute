@@ -372,6 +372,7 @@ void Runtime::scheduleLuauCallback(std::shared_ptr<Ref> callbackRef, std::functi
     );
 
     runLoopCv.notify_one();
+    uv_async_send(&wakeup);
 }
 
 void Runtime::runInWorkQueue(std::function<void()> f)
