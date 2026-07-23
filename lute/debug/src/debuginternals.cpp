@@ -398,6 +398,7 @@ void Target::installBpHitCallback()
             target->parentRuntime.reporter.reportError(Luau::format("breakpoint hit at line %d could not find a runtime source", line));
             return;
         }
+        target->stoppedBpLine = line;
         std::string chunkname = info.source;
         std::optional<Breakpoint> bp = target->getBreakpointBySourceLineHelper(getSourceFromChunk(chunkname), line);
         // Only stop execution on installed breakpoints; otherwise, don't stop.
@@ -519,7 +520,12 @@ std::optional<StackFrame> Target::getStackFrameHelper(int threadId, int level)
         if (ar.source)
         {
             frame.sourcePath = getSourceFromChunk(ar.source);
-            frame.line = ar.currentline;
+            // edge case: when we hit a breakpoint, the pc is sent backward one
+            // so that we can hit it again, so lua_getinfo() fails.
+            if (level == 0 && bpHit)
+                frame.line = stoppedBpLine;
+            else
+                frame.line = ar.currentline;
         }
         else
         {
@@ -597,6 +603,7 @@ bool Target::continueProcess()
             if (currentBp && currentBp->status == BreakpointStatus::Installed)
                 continueRequestedBp.insert(stoppedThread);
             bpHit = std::nullopt;
+            stoppedBpLine = -1;
         }
         childRuntime->runningThreads.push_back({true, getRefForThread(stoppedThread), 0});
         // This schedule() wakes up the runtime in runContinuously() to re-run runToCompletion() in case that has exited. This is a no-op if
