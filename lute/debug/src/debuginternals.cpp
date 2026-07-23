@@ -638,6 +638,7 @@ bool Target::pauseProcess()
         target->paused = true;
         target->childRuntime->stopDebug();
         target->stoppedThread = L;
+        debug::Thread thread = target->stateToThread[L];
         // We transition into a paused state. Let's modify all pending breakpoints.
         auto [installed, uninstalled] = target->modifyPendingBreakpoints(target->scriptThread);
         lua_break(L);
@@ -646,7 +647,7 @@ bool Target::pauseProcess()
         lock.unlock();
         // Since pausing actually only happens when the interrupt callback runs we have a callback
         if (target->launchConfig.onPause)
-            target->launchConfig.onPause();
+            target->launchConfig.onPause(thread);
         for (auto& bp : installed)
             target->launchConfig.onBreakpointInstall(bp);
         for (auto& bp : uninstalled)

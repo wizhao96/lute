@@ -288,7 +288,7 @@ TEST_SUITE("Debug")
             CHECK(pausedProcess);
             hitPromise.set_value();
         };
-        config.onPause = [&]()
+        config.onPause = [&](const Thread&)
         {
             numPause++;
         };

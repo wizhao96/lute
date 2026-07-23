@@ -62,7 +62,7 @@ struct LaunchConfig
     std::function<void(const Breakpoint& bp)> onBreakpointUninstall;
     std::function<void(const Thread& thread, const Breakpoint& bp)> onBreakpointHit;
     std::function<void(bool success)> onExit;
-    std::function<void()> onPause;
+    std::function<void(const Thread& thread)> onPause;
 };
 
 struct Target
