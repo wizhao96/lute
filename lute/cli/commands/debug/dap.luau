@@ -42,10 +42,17 @@ local function clearAndSetBreakpoints(
 end
 
 local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
+	local fs = require("@std/fs")
+	local logFile = fs.open("/tmp/lute-dap.log", "w")
+	local function log(msg: string)
+		fs.write(logFile, msg .. "\n")
+	end
+
 	local ioSession = dapStream.makeDapStreamSession(reader, writer)
 	local target = debugger.newTarget()
 	local launchCallbacks: debugger.LaunchConfig = {
 		onBreakpointHit = function(thread: debugger.Thread, bp: debugger.Breakpoint)
+			log(`[callback] onBreakpointHit thread={thread.id} bp={bp.id} line={bp.line}`)
 			ioSession.writeEvent("stopped", {
 				reason = "breakpoint",
 				threadId = thread.id,
@@ -53,19 +60,23 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				allThreadsStopped = true,
 			})
 		end,
-		onPause = function()
+		onPause = function(thread: debugger.Thread)
+			log("[callback] onPause")
 			ioSession.writeEvent("stopped", {
 				reason = "pause",
+				threadId = thread.id,
 				allThreadsStopped = true,
 			})
 		end,
 		onBreakpointInstall = function(bp: debugger.Breakpoint)
+			log(`[callback] onBreakpointInstall bp={bp.id} line={bp.line}`)
 			ioSession.writeEvent("breakpoint", {
 				reason = "changed",
 				breakpoint = debugToDapBreakpoint(bp),
 			})
 		end,
 		onExit = function(success: boolean)
+			log(`[callback] onExit success={success}`)
 			local exitCode = if success then 0 else 1
 			ioSession.writeEvent("exited", {
 				exitCode = exitCode,
@@ -80,6 +91,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 		local request = ioSession.readDap()
 		local command = request.command :: string
 		local reqSeq = request.seq :: number
+		log(`[request] {command} seq={reqSeq}`)
 		if command == "initialize" then
 			local capabilities = {
 				supportsConfigurationDoneRequest = true,
@@ -109,7 +121,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			})
 		elseif command == "continue" then
 			target:continueProcess()
-			ioSession.writeResponse(reqSeq, true, command)
+			ioSession.writeResponse(reqSeq, true, command, nil, { allThreadsContinued = true })
 		elseif command == "pause" then
 			target:pauseProcess()
 			ioSession.writeResponse(reqSeq, true, command)
@@ -142,11 +154,6 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 		-- dummy handlers for threads and stackTrace for now
 		elseif command == "threads" then
 			local threads = target:getThreads()
-			if not threads then
-				ioSession.writeResponse(reqSeq, false, command, "notStopped")
-				continue
-			end
-			assert(threads)
 			local dapThreads = {}
 			for _, thread in threads do
 				table.insert(dapThreads, {
