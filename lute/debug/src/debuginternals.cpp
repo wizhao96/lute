@@ -44,7 +44,7 @@ bool Thread::operator==(const Thread& other) const
 }
 
 
-VariableContext::VariableContext(int variableReference, VariablesContextType type, int threadId, int level, int luaref)
+VariableContext::VariableContext(int variableReference, VariableContextType type, int threadId, int level, int luaref)
     : variableReference(variableReference)
     , type(type)
     , threadId(threadId)
@@ -55,17 +55,17 @@ VariableContext::VariableContext(int variableReference, VariablesContextType typ
 
 VariableContext VariableContext::makeLocals(int variableReference, int threadId, int level)
 {
-    return VariableContext(variableReference, VariablesContextType::Locals, threadId, level, -1);
+    return VariableContext(variableReference, VariableContextType::Locals, threadId, level, -1);
 }
 
 VariableContext VariableContext::makeUpvalues(int variableReference, int threadId, int level)
 {
-    return VariableContext(variableReference, VariablesContextType::Upvalues, threadId, level, -1);
+    return VariableContext(variableReference, VariableContextType::Upvalues, threadId, level, -1);
 }
 
 VariableContext VariableContext::makeTable(int variableReference, int luaref)
 {
-    return VariableContext(variableReference, VariablesContextType::Table, -1, -1, luaref);
+    return VariableContext(variableReference, VariableContextType::Table, -1, -1, luaref);
 }
 
 Target::Target(Runtime& parentRuntime)
@@ -605,11 +605,8 @@ std::optional<std::vector<StackFrame>> Target::getStackTrace(int threadId, int s
     return stackTrace;
 }
 
-std::optional<std::vector<VariableContext>> Target::getScopes(int threadId, int level)
+std::optional<std::vector<VariableContext>> Target::getScopesHelper(int threadId, int level)
 {
-    std::unique_lock lock(targetMutex);
-    if (!paused)
-        return std::nullopt;
     std::optional<StackFrame> frame = getStackFrameHelper(threadId, level);
     if (!frame)
         return std::nullopt;
@@ -617,24 +614,33 @@ std::optional<std::vector<VariableContext>> Target::getScopes(int threadId, int 
         return scopeCache[frame->id];
     std::vector<VariableContext> contexts;
     VariableContext locals = VariableContext::makeLocals(variableRefId, threadId, level);
-    variableContexts[variableRefId] = locals;
+    variableContexts.insert_or_assign(variableRefId, locals);
     variableRefId++;
     contexts.push_back(locals);
     VariableContext upvalues = VariableContext::makeUpvalues(variableRefId, threadId, level);
-    variableContexts[variableRefId] = upvalues;
+    variableContexts.insert_or_assign(variableRefId, upvalues);
     variableRefId++;
     contexts.push_back(upvalues);
     scopeCache[frame->id] = contexts;
     return contexts;
 }
 
+std::optional<std::vector<VariableContext>> Target::getScopes(int threadId, int level)
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+        return std::nullopt;
+    return getScopesHelper(threadId, level);
+}
+
 static std::string convertNumberToString(lua_State* L, int stackSlot)
 {
-    double val = lua_tonumber(L, -1);
+    double val = lua_tonumber(L, stackSlot);
     if (val == trunc(val))
         return std::to_string(lua_tointeger(L, stackSlot));
-    else
-        return std::to_string(lua_tonumber(L, stackSlot));
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%.15g", val);
+    return buf;
 }
 
 // We assume that the value is at position -1 on the stack and the key is at position -2.
@@ -645,7 +651,7 @@ static std::string getKeyFromTableType(lua_State* L)
     {
     case LUA_TSTRING:
     {
-        key = "\"" + std::string(lua_tostring(L, -2)) + "\"";
+        key = std::string(lua_tostring(L, -2));
         break;
     }
     case LUA_TNUMBER:
@@ -672,6 +678,7 @@ static std::string printTable(lua_State* L, int idx, int levelsToPrint)
     int absoluteIndex = lua_absindex(L, idx);
     std::string result = "{";
     lua_pushnil(L);
+    std::vector<std::pair<std::string, std::string>> keyValues;
     while (lua_next(L, absoluteIndex))
     {
         std::string key = getKeyFromTableType(L);
@@ -694,8 +701,27 @@ static std::string printTable(lua_State* L, int idx, int levelsToPrint)
             value = lua_typename(L, lua_type(L, -1));
             break;
         }
-        result += key + "=" + value;
+        keyValues.push_back(std::make_pair(key, value));
         lua_pop(L, 1);
+    }
+    // this is a "pure" array
+    if ((int)(keyValues.size()) == lua_objlen(L, idx))
+    {
+        for (auto [_, value] : keyValues)
+        {
+            if (result != "{")
+                result += ", ";
+            result += value;
+        }
+    }
+    else
+    {
+        for (auto [key, value] : keyValues)
+        {
+            if (result != "{")
+                result += ", ";
+            result += key + "=" + value;
+        }
     }
     return result + "}";
 }
@@ -705,6 +731,7 @@ Variable Target::makeVariable(lua_State* L, const std::string& name)
 {
     Variable var;
     var.name = name;
+    var.type = lua_typename(L, lua_type(L, -1));
     switch (lua_type(L, -1))
     {
     case LUA_TNUMBER:
@@ -713,7 +740,7 @@ Variable Target::makeVariable(lua_State* L, const std::string& name)
         break;
     }
     case LUA_TSTRING:
-        var.value = lua_tostring(L, -1);
+        var.value = "\"" + std::string(lua_tostring(L, -1)) + "\"";
         break;
     case LUA_TBOOLEAN:
         var.value = lua_toboolean(L, -1) ? "true" : "false";
@@ -725,7 +752,7 @@ Variable Target::makeVariable(lua_State* L, const std::string& name)
         lua_pushvalue(L, -1);
         int ref = lua_ref(L, -1);
         lua_pop(L, 1);
-        variableContexts[variableRefId] = VariableContext::makeTable(ref);
+        variableContexts.insert_or_assign(variableRefId, VariableContext::makeTable(variableRefId, ref));
         variableRefId++;
         break;
     }
@@ -793,31 +820,9 @@ std::vector<Variable> Target::getTableHelper(lua_State* L, int idx)
     return vars;
 }
 
-std::optional<std::vector<Variable>> Target::getLocals(int threadId, int level)
-{
-    std::unique_lock lock(targetMutex);
-    if (!paused)
-    {
-        return std::nullopt;
-    }
-    auto it = threadIdToState.find(threadId);
-    if (it == threadIdToState.end())
-    {
-        return std::nullopt;
-    }
-    lua_State* L = it->second;
-    if (level >= lua_stackdepth(L))
-        return std::nullopt;
-    return getLocalsHelper(L, level);
-}
 
-std::optional<std::vector<Variable>> Target::getVariables(int varRef)
+std::optional<std::vector<Variable>> Target::getVariablesHelper(int varRef)
 {
-    std::unique_lock lock(targetMutex);
-    if (!paused)
-    {
-        return std::nullopt;
-    }
     auto it = variableContexts.find(varRef);
     if (it == variableContexts.end())
     {
@@ -829,11 +834,11 @@ std::optional<std::vector<Variable>> Target::getVariables(int varRef)
         return it2->second;
     }
     std::vector<Variable> vars;
-    if (context.type == VariablesContextType::Locals)
+    if (context.type == VariableContextType::Locals)
     {
         vars = getLocalsHelper(threadIdToState[context.threadId], context.level);
     }
-    else if (context.type == VariablesContextType::Upvalues)
+    else if (context.type == VariableContextType::Upvalues)
     {
         vars = getUpvaluesHelper(threadIdToState[context.threadId], context.level);
     }
@@ -846,6 +851,43 @@ std::optional<std::vector<Variable>> Target::getVariables(int varRef)
     variableCache[varRef] = vars;
     return vars;
 }
+
+std::optional<std::vector<Variable>> Target::getVariables(int varRef)
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+    {
+        return std::nullopt;
+    }
+    return getVariablesHelper(varRef);
+}
+
+std::optional<std::vector<Variable>> Target::getVariablesByContextType(int threadId, int level, VariableContextType contextType)
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+    {
+        return std::nullopt;
+    }
+    std::optional<std::vector<VariableContext>> scopes = getScopesHelper(threadId, level);
+    if (!scopes)
+        return std::nullopt;
+    auto it = std::find_if(
+        scopes->begin(),
+        scopes->end(),
+        [&](const VariableContext& ctx)
+        {
+            return ctx.type == contextType;
+        }
+    );
+    if (it == scopes->end())
+    {
+        fprintf(stderr, "nullopt");
+        return std::nullopt;
+    }
+    return getVariablesHelper(it->variableReference);
+}
+
 
 bool Target::continueProcess()
 {

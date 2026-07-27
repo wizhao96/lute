@@ -56,7 +56,7 @@ struct StackFrame
     int column = 0;
 };
 
-enum class VariablesContextType
+enum class VariableContextType
 {
     Locals,
     Upvalues,
@@ -66,13 +66,13 @@ enum class VariablesContextType
 struct VariableContext
 {
     int variableReference;
-    VariablesContextType type;
+    VariableContextType type;
     std::string name;
     int threadId; // for locals
     int level;    // for locals
     int luaref;   // for tables
 
-    explicit VariableContext(int variableReference, VariablesContextType type, int threadId = -1, int level = -1, int luaref = -1);
+    explicit VariableContext(int variableReference, VariableContextType type, int threadId = -1, int level = -1, int luaref = -1);
     static VariableContext makeLocals(int variableReference, int threadId, int level);
     static VariableContext makeUpvalues(int variableReference, int threadId, int level);
     static VariableContext makeTable(int variableReference, int luaref);
@@ -85,7 +85,7 @@ struct Variable
     std::string value;
     std::string type;
     // for tables
-    int variableReference = -1;
+    int variableReference = 0;
 };
 
 struct LaunchConfig
@@ -131,7 +131,7 @@ struct Target
     std::optional<std::vector<StackFrame>> getStackTrace(int threadId, int startLevel = 0, int maximumLevel = 0);
     std::optional<std::vector<VariableContext>> getScopes(int threadId, int level);
     std::optional<std::vector<Variable>> getVariables(int varRef);
-    std::optional<std::vector<Variable>> getLocals(int threadId, int level);
+    std::optional<std::vector<Variable>> getVariablesByContextType(int threadId, int level, VariableContextType contextType);
 
     // For actively running scripts:
     bool launch(const std::string& sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
@@ -198,9 +198,13 @@ private:
     std::pair<std::vector<Breakpoint>, std::vector<Breakpoint>> modifyPendingBreakpoints(lua_State* L);
 
     Variable makeVariable(lua_State* L, const std::string& name);
+
     std::vector<Variable> getLocalsHelper(lua_State* L, int level);
     std::vector<Variable> getUpvaluesHelper(lua_State* L, int level);
     std::vector<Variable> getTableHelper(lua_State* L, int idx);
+
+    std::optional<std::vector<VariableContext>> getScopesHelper(int threadId, int level);
+    std::optional<std::vector<Variable>> getVariablesHelper(int varRef);
 
     void installBpHitCallback();
     void installExitCallback();

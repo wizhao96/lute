@@ -19,6 +19,31 @@ static void checkBreakpoint(Target& target, int id, BreakpointStatus status, int
     CHECK(foundBp->line == line);
 }
 
+
+static int checkVariable(const std::vector<Variable>& vars, const std::string& name, const std::string& value, const std::string& type, bool isTable)
+{
+    auto foundVar = std::find_if(
+        vars.begin(),
+        vars.end(),
+        [&](const Variable& v)
+        {
+            return v.name == name;
+        }
+    );
+    REQUIRE(foundVar != vars.end());
+    CHECK(foundVar->value == value);
+    CHECK(foundVar->type == type);
+    if (isTable)
+    {
+        CHECK(foundVar->variableReference > 0);
+    }
+    else
+    {
+        CHECK(foundVar->variableReference == 0);
+    }
+    return foundVar->variableReference;
+}
+
 TEST_SUITE("Debug")
 {
     TEST_CASE_FIXTURE(DebugFixture, "Debug_setBreakpoint")
@@ -447,4 +472,51 @@ TEST_SUITE("Debug")
         REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
         CHECK(hits == 9);
     }
+
+    TEST_CASE_FIXTURE(DebugFixture, "Debug_variables")
+    {
+        std::string fixturePath = getDebugFixturePath("variables.luau");
+        Target target(*runtime);
+        target.setBreakpoint(fixturePath, 10);
+
+        std::vector<Variable> capturedLocals;
+        config.onBreakpointHit = [&](const Thread&, const Breakpoint&)
+        {
+            const std::vector<Thread>& threads = target.getThreads();
+            REQUIRE(threads.size() == 1);
+            int threadId = threads.at(0).id;
+            // stack frame at level 0
+            std::optional<std::vector<Variable>> upvalues = target.getVariablesByContextType(threadId, 0, VariableContextType::Upvalues);
+            REQUIRE(upvalues.has_value());
+            checkVariable(*upvalues, "a", "24", "number", false);
+            checkVariable(*upvalues, "_b", "1.2", "number", false);
+            std::optional<std::vector<Variable>> locals0 = target.getVariablesByContextType(threadId, 0, VariableContextType::Locals);
+            checkVariable(*locals0, "_k", "25.2", "number", false);
+            // stack frame at level 1
+            std::optional<std::vector<Variable>> locals1 = target.getVariablesByContextType(threadId, 1, VariableContextType::Locals);
+            REQUIRE(locals1.has_value());
+            checkVariable(*locals1, "a", "24", "number", false);
+            checkVariable(*locals1, "_b", "1.2", "number", false);
+            checkVariable(*locals1, "_c", "\"test\"", "string", false);
+            int ref1 = checkVariable(*locals1, "_d", "{1, 2, 3}", "table", true);
+            int ref2 = checkVariable(*locals1, "_e", "{a=4, [4]={r=13}, b=\"5\"}", "table", true);
+            checkVariable(*locals1, "_f", "true", "boolean", false);
+            std::optional<std::vector<Variable>> table = target.getVariables(ref1);
+            REQUIRE(table.has_value());
+            checkVariable(*table, "[1]", "1", "number", false);
+            checkVariable(*table, "[2]", "2", "number", false);
+            checkVariable(*table, "[3]", "3", "number", false);
+            table = target.getVariables(ref2);
+            REQUIRE(table.has_value());
+            checkVariable(*table, "a", "4", "number", false);
+            int ref3 = checkVariable(*table, "[4]", "{r=13}", "table", true);
+            checkVariable(*table, "b", "\"5\"", "string", false);
+            table = target.getVariables(ref3);
+            REQUIRE(table.has_value());
+            checkVariable(*table, "r", "13", "number", false);
+            target.continueProcess();
+        };
+        target.launch(fixturePath, {}, config);
+        REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+    };
 }
