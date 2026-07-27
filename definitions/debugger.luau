@@ -29,6 +29,32 @@ export type StackFrame = {
 	column: number,
 }
 
+--- The type of a VariableScope (i.e. whether it contains local variables, upvalues, or
+--- values from a table)
+export type VariableScopeType = "locals" | "upvalues" | "table"
+
+--- A VariableScope contains the contextual information for a collection of Variables
+--- such as what variable reference ID number to refer to this collection, what type of collection
+--- it is, etc. Variable reference IDs are reset upon continuing execution.
+export type VariableScope = {
+	variableRef: number,
+	type: VariableScopeType,
+	name: string,
+	threadId: number,
+	level: number,
+}
+
+--- A Variable represents an inspected variable from the script, including its name,
+--- type, and a value.
+--- If the Variable represented is a table, its value may be condensed
+--- to a shorter one-line summary. It will then have a variableRef > 0 that can be inspected further.
+export type Variable = {
+	name: string,
+	value: string,
+	type: string,
+	variableRef: number,
+}
+
 --- A set of callbacks that we configure before launching our debugger
 export type LaunchConfig = {
 	--- called when a breakpoint `bp` is hit on thread `thread`; execution is paused until continueProcess() is called
@@ -81,6 +107,20 @@ export type Target = {
 	--- `numFrames` frames. If `startLevel` is not specified, we start at level 0. If `numFrames` is not specified,
 	--- we return until the deepest frame.
 	getStackTrace: (self: Target, threadId: number, startLevel: number?, numFrames: number?) -> { StackFrame }?,
+	--- Gets a set of variable scopes on the stack frame at `threadId` and `level`. Return `nil` if script is running
+	--- or if that stack frame is not found.
+	getScopes: (self: Target, threadId: number, level: number) -> { VariableScope }?,
+	--- Gets a set of variables belonging to the scope refered by `variableRef`. Return `nil` if script is running
+	--- or if such a scope does not exist.
+	getVariables: (self: Target, variableRef: number) -> { Variable }?,
+	--- Gets a set of variables belonging on the stack frame at `threadId` and `level` with a certain scopeType.
+	--- Return `nil` if script is running or if such variables can not be found.
+	getVariablesByScopeType: (
+		self: Target,
+		threadId: number,
+		level: number,
+		sourceType: VariableScopeType
+	) -> { Variable }?,
 }
 
 --- Create a new Target handle on the current VM.
