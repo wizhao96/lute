@@ -960,6 +960,7 @@ bool Target::pauseProcess()
         lua_break(L);
         // Clear out the interrupt callback after we are done.
         lua_callbacks(L)->interrupt = nullptr;
+        Thread thread = target->stateToThread[L];
         lock.unlock();
         // Since pausing actually only happens when the interrupt callback runs we have a callback
         if (target->launchConfig.onPause)
