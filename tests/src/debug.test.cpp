@@ -19,6 +19,22 @@ static void checkBreakpoint(Target& target, int id, BreakpointStatus status, int
     CHECK(foundBp->line == line);
 }
 
+static void checkScope(const std::vector<VariableScope>& scopes, VariableScopeType type, std::string name, int threadId, int level)
+{
+    auto foundScope = std::find_if(
+        scopes.begin(),
+        scopes.end(),
+        [&](const VariableScope& scope)
+        {
+            return scope.name == name;
+        }
+    );
+    REQUIRE(foundScope != scopes.end());
+    CHECK(foundScope->type == type);
+    CHECK(foundScope->threadId == threadId);
+    CHECK(foundScope->level == level);
+    CHECK(foundScope->variableReference > 0);
+}
 
 static int checkVariable(const std::vector<Variable>& vars, const std::string& name, const std::string& value, const std::string& type, bool isTable)
 {
@@ -486,14 +502,22 @@ TEST_SUITE("Debug")
             REQUIRE(threads.size() == 1);
             int threadId = threads.at(0).id;
             // stack frame at level 0
-            std::optional<std::vector<Variable>> upvalues = target.getVariablesByContextType(threadId, 0, VariableContextType::Upvalues);
-            REQUIRE(upvalues.has_value());
-            checkVariable(*upvalues, "a", "24", "number", false);
-            checkVariable(*upvalues, "_b", "1.2", "number", false);
-            std::optional<std::vector<Variable>> locals0 = target.getVariablesByContextType(threadId, 0, VariableContextType::Locals);
+            std::optional<std::vector<VariableScope>> scopes = target.getScopes(threadId, 0);
+            REQUIRE(scopes.has_value());
+            checkScope(*scopes, VariableScopeType::Locals, "Locals", 0, 0);
+            checkScope(*scopes, VariableScopeType::Upvalues, "Upvalues", 0, 0);
+            std::optional<std::vector<Variable>> upvalues0 = target.getVariablesByContextType(threadId, 0, VariableScopeType::Upvalues);
+            REQUIRE(upvalues0.has_value());
+            checkVariable(*upvalues0, "a", "24", "number", false);
+            checkVariable(*upvalues0, "_b", "1.2", "number", false);
+            std::optional<std::vector<Variable>> locals0 = target.getVariablesByContextType(threadId, 0, VariableScopeType::Locals);
             checkVariable(*locals0, "_k", "25.2", "number", false);
             // stack frame at level 1
-            std::optional<std::vector<Variable>> locals1 = target.getVariablesByContextType(threadId, 1, VariableContextType::Locals);
+            scopes = target.getScopes(threadId, 1);
+            REQUIRE(scopes.has_value());
+            checkScope(*scopes, VariableScopeType::Locals, "Locals", 0, 1);
+            checkScope(*scopes, VariableScopeType::Upvalues, "Upvalues", 0, 1);
+            std::optional<std::vector<Variable>> locals1 = target.getVariablesByContextType(threadId, 1, VariableScopeType::Locals);
             REQUIRE(locals1.has_value());
             checkVariable(*locals1, "a", "24", "number", false);
             checkVariable(*locals1, "_b", "1.2", "number", false);
@@ -514,6 +538,9 @@ TEST_SUITE("Debug")
             table = target.getVariables(ref3);
             REQUIRE(table.has_value());
             checkVariable(*table, "r", "13", "number", false);
+            std::optional<std::vector<Variable>> upvalues1 = target.getVariablesByContextType(threadId, 1, VariableScopeType::Upvalues);
+            REQUIRE(upvalues1.has_value());
+            CHECK(upvalues1->size() == 0);
             target.continueProcess();
         };
         target.launch(fixturePath, {}, config);

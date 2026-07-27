@@ -56,28 +56,33 @@ struct StackFrame
     int column = 0;
 };
 
-enum class VariableContextType
+enum class VariableScopeType
 {
     Locals,
     Upvalues,
     Table
 };
 
-struct VariableContext
+// A VariableScope corresponds to an object with a variable reference.
+// Locals and upvalues are returned by the getScope() method. After calling getVariable,
+// we can use variable reference IDs to drill into tables if necessary.
+struct VariableScope
 {
     int variableReference;
-    VariableContextType type;
+    VariableScopeType type;
     std::string name;
     int threadId; // for locals
     int level;    // for locals
     int luaref;   // for tables
 
-    explicit VariableContext(int variableReference, VariableContextType type, int threadId = -1, int level = -1, int luaref = -1);
-    static VariableContext makeLocals(int variableReference, int threadId, int level);
-    static VariableContext makeUpvalues(int variableReference, int threadId, int level);
-    static VariableContext makeTable(int variableReference, int luaref);
+    explicit VariableScope(int variableReference, VariableScopeType type, std::string name, int threadId = -1, int level = -1, int luaref = -1);
+    static VariableScope makeLocals(int variableReference, int threadId, int level);
+    static VariableScope makeUpvalues(int variableReference, int threadId, int level);
+    static VariableScope makeTable(int variableReference, int luaref);
 };
 
+// Variables are generally returned by the getVariable() method. They only have
+// a reference ID if they represent a table.
 struct Variable
 {
     std::string name;
@@ -129,9 +134,9 @@ struct Target
     std::vector<Thread> getThreads() const;
     std::optional<StackFrame> getStackFrame(int threadId, int level);
     std::optional<std::vector<StackFrame>> getStackTrace(int threadId, int startLevel = 0, int maximumLevel = 0);
-    std::optional<std::vector<VariableContext>> getScopes(int threadId, int level);
+    std::optional<std::vector<VariableScope>> getScopes(int threadId, int level);
     std::optional<std::vector<Variable>> getVariables(int varRef);
-    std::optional<std::vector<Variable>> getVariablesByContextType(int threadId, int level, VariableContextType contextType);
+    std::optional<std::vector<Variable>> getVariablesByContextType(int threadId, int level, VariableScopeType contextType);
 
     // For actively running scripts:
     bool launch(const std::string& sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
@@ -180,9 +185,9 @@ private:
     std::unordered_map<int, std::pair<int, int>> idToStackFrameInfo;                // stack frame id -> stack frame's (thread id, level)
 
     // variable information
-    std::unordered_map<int, std::vector<VariableContext>> scopeCache; // stack frame id -> scope
-    std::unordered_map<int, std::vector<Variable>> variableCache;     // var reference -> all variables under that reference
-    std::unordered_map<int, VariableContext> variableContexts;        // var reference -> variableContext
+    std::unordered_map<int, std::vector<VariableScope>> scopeCache; // stack frame id -> scope
+    std::unordered_map<int, std::vector<Variable>> variableCache;   // var reference -> all variables under that reference
+    std::unordered_map<int, VariableScope> variableContexts;        // var reference -> variableContext
     int variableRefId = 1;
 
     // for require contexts
@@ -203,7 +208,7 @@ private:
     std::vector<Variable> getUpvaluesHelper(lua_State* L, int level);
     std::vector<Variable> getTableHelper(lua_State* L, int idx);
 
-    std::optional<std::vector<VariableContext>> getScopesHelper(int threadId, int level);
+    std::optional<std::vector<VariableScope>> getScopesHelper(int threadId, int level);
     std::optional<std::vector<Variable>> getVariablesHelper(int varRef);
 
     void installBpHitCallback();
