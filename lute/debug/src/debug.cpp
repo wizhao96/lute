@@ -470,14 +470,14 @@ static int target_getVariables(lua_State* L)
 }
 
 
-static int target_getVariablesByContextType(lua_State* L)
+static int target_getVariablesByScopeType(lua_State* L)
 {
     auto target = getTarget(L, 1);
     int threadId = luaL_checkinteger(L, 2);
     int level = luaL_checkinteger(L, 3);
     const char* typeStr = luaL_checkstring(L, 4);
     debug::VariableScopeType type = scopeStringToType(typeStr);
-    std::optional<std::vector<debug::Variable>> variables = target->getVariablesByContextType(threadId, level, type);
+    std::optional<std::vector<debug::Variable>> variables = target->getVariablesByScopeType(threadId, level, type);
     if (!variables)
     {
         checkStack(L, 1);
@@ -519,7 +519,7 @@ static const std::unordered_map<std::string, lua_CFunction> kTargetMethods = {
     {"getStackTrace", target_getStackTrace},
     {"getScopes", target_getScopes},
     {"getVariables", target_getVariables},
-    {"getVariablesByScopeType", target_getVariablesByContextType}
+    {"getVariablesByScopeType", target_getVariablesByScopeType}
 };
 
 static void initializeTarget(lua_State* L)
