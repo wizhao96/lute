@@ -863,7 +863,7 @@ std::optional<std::vector<Variable>> Target::getVariables(int varRef)
     return getVariablesHelper(varRef);
 }
 
-std::optional<std::vector<Variable>> Target::getVariablesByContextType(int threadId, int level, VariableScopeType contextType)
+std::optional<std::vector<Variable>> Target::getVariablesByScopeType(int threadId, int level, VariableScopeType contextType)
 {
     std::unique_lock lock(targetMutex);
     if (!paused)

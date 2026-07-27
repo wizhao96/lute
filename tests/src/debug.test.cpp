@@ -507,18 +507,18 @@ TEST_SUITE("Debug")
             REQUIRE(scopes.has_value());
             checkScope(*scopes, VariableScopeType::Locals, "Locals", 0, 0);
             checkScope(*scopes, VariableScopeType::Upvalues, "Upvalues", 0, 0);
-            std::optional<std::vector<Variable>> upvalues0 = target.getVariablesByContextType(threadId, 0, VariableScopeType::Upvalues);
+            std::optional<std::vector<Variable>> upvalues0 = target.getVariablesByScopeType(threadId, 0, VariableScopeType::Upvalues);
             REQUIRE(upvalues0.has_value());
             checkVariable(*upvalues0, "a", "24", "number", false);
             checkVariable(*upvalues0, "_b", "1.2", "number", false);
-            std::optional<std::vector<Variable>> locals0 = target.getVariablesByContextType(threadId, 0, VariableScopeType::Locals);
+            std::optional<std::vector<Variable>> locals0 = target.getVariablesByScopeType(threadId, 0, VariableScopeType::Locals);
             checkVariable(*locals0, "_k", "25.2", "number", false);
             // stack frame at level 1
             scopes = target.getScopes(threadId, 1);
             REQUIRE(scopes.has_value());
             checkScope(*scopes, VariableScopeType::Locals, "Locals", 0, 1);
             checkScope(*scopes, VariableScopeType::Upvalues, "Upvalues", 0, 1);
-            std::optional<std::vector<Variable>> locals1 = target.getVariablesByContextType(threadId, 1, VariableScopeType::Locals);
+            std::optional<std::vector<Variable>> locals1 = target.getVariablesByScopeType(threadId, 1, VariableScopeType::Locals);
             REQUIRE(locals1.has_value());
             checkVariable(*locals1, "a", "24", "number", false);
             checkVariable(*locals1, "_b", "1.2", "number", false);
@@ -539,7 +539,7 @@ TEST_SUITE("Debug")
             table = target.getVariables(ref3);
             REQUIRE(table.has_value());
             checkVariable(*table, "r", "13", "number", false);
-            std::optional<std::vector<Variable>> upvalues1 = target.getVariablesByContextType(threadId, 1, VariableScopeType::Upvalues);
+            std::optional<std::vector<Variable>> upvalues1 = target.getVariablesByScopeType(threadId, 1, VariableScopeType::Upvalues);
             REQUIRE(upvalues1.has_value());
             CHECK(upvalues1->size() == 0);
             target.continueProcess();
