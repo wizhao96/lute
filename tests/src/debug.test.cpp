@@ -329,8 +329,9 @@ TEST_SUITE("Debug")
             CHECK(pausedProcess);
             hitPromise.set_value();
         };
-        config.onPause = [&](const Thread&)
+        config.onPause = [&](const Thread& thread)
         {
+            CHECK(thread.id == 0);
             numPause++;
         };
         bool launched = target.launch(fixturePath, {}, config);
