@@ -11,6 +11,7 @@
 #include "lua.h"
 #include "lualib.h"
 
+#include <cmath>
 #include <cstddef>
 #include <fstream>
 #include <memory>
@@ -40,6 +41,31 @@ Thread::Thread(int id, std::string name)
 bool Thread::operator==(const Thread& other) const
 {
     return id == other.id;
+}
+
+
+VariableContext::VariableContext(int variableReference, VariablesContextType type, int threadId, int level, int luaref)
+    : variableReference(variableReference)
+    , type(type)
+    , threadId(threadId)
+    , level(level)
+    , luaref(luaref)
+{
+}
+
+VariableContext VariableContext::makeLocals(int variableReference, int threadId, int level)
+{
+    return VariableContext(variableReference, VariablesContextType::Locals, threadId, level, -1);
+}
+
+VariableContext VariableContext::makeUpvalues(int variableReference, int threadId, int level)
+{
+    return VariableContext(variableReference, VariablesContextType::Upvalues, threadId, level, -1);
+}
+
+VariableContext VariableContext::makeTable(int variableReference, int luaref)
+{
+    return VariableContext(variableReference, VariablesContextType::Table, -1, -1, luaref);
 }
 
 Target::Target(Runtime& parentRuntime)
@@ -489,11 +515,10 @@ std::vector<Thread> Target::getThreads() const
     for (auto& [L, thread] : stateToThread)
     {
         if (lua_costatus(childRuntime->GL, L) != LUA_COFIN && lua_costatus(childRuntime->GL, L) != LUA_COERR)
-            result.push_back(thread);
+            result.emplace_back(thread);
     }
     return result;
 }
-
 
 std::optional<StackFrame> Target::getStackFrameHelper(int threadId, int level)
 {
@@ -580,6 +605,248 @@ std::optional<std::vector<StackFrame>> Target::getStackTrace(int threadId, int s
     return stackTrace;
 }
 
+std::optional<std::vector<VariableContext>> Target::getScopes(int threadId, int level)
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+        return std::nullopt;
+    std::optional<StackFrame> frame = getStackFrameHelper(threadId, level);
+    if (!frame)
+        return std::nullopt;
+    if (scopeCache.find(frame->id) != scopeCache.end())
+        return scopeCache[frame->id];
+    std::vector<VariableContext> contexts;
+    VariableContext locals = VariableContext::makeLocals(variableRefId, threadId, level);
+    variableContexts[variableRefId] = locals;
+    variableRefId++;
+    contexts.push_back(locals);
+    VariableContext upvalues = VariableContext::makeUpvalues(variableRefId, threadId, level);
+    variableContexts[variableRefId] = upvalues;
+    variableRefId++;
+    contexts.push_back(upvalues);
+    scopeCache[frame->id] = contexts;
+    return contexts;
+}
+
+static std::string convertNumberToString(lua_State* L, int stackSlot)
+{
+    double val = lua_tonumber(L, -1);
+    if (val == trunc(val))
+        return std::to_string(lua_tointeger(L, stackSlot));
+    else
+        return std::to_string(lua_tonumber(L, stackSlot));
+}
+
+// We assume that the value is at position -1 on the stack and the key is at position -2.
+static std::string getKeyFromTableType(lua_State* L)
+{
+    std::string key;
+    switch (lua_type(L, -2))
+    {
+    case LUA_TSTRING:
+    {
+        key = "\"" + std::string(lua_tostring(L, -2)) + "\"";
+        break;
+    }
+    case LUA_TNUMBER:
+        key = "[" + convertNumberToString(L, -2) + "]";
+        break;
+    case LUA_TBOOLEAN:
+        key = lua_toboolean(L, -2) ? "[true]" : "[false]";
+        break;
+    case LUA_TTABLE:
+        key = "[table]";
+        break;
+    default:
+        key = "[" + std::string(lua_typename(L, lua_type(L, -2))) + "]";
+        break;
+    }
+    return key;
+}
+
+// Gets all variables from a table at index idx of the stack
+static std::string printTable(lua_State* L, int idx, int levelsToPrint)
+{
+    if (levelsToPrint <= 0)
+        return "{...}";
+    int absoluteIndex = lua_absindex(L, idx);
+    std::string result = "{";
+    lua_pushnil(L);
+    while (lua_next(L, absoluteIndex))
+    {
+        std::string key = getKeyFromTableType(L);
+        std::string value;
+        switch (lua_type(L, -1))
+        {
+        case LUA_TNUMBER:
+            value = convertNumberToString(L, -1);
+            break;
+        case LUA_TSTRING:
+            value = "\"" + std::string(lua_tostring(L, -1)) + "\"";
+            break;
+        case LUA_TBOOLEAN:
+            value = lua_toboolean(L, -1) ? "true" : "false";
+            break;
+        case LUA_TTABLE:
+            value = printTable(L, -1, levelsToPrint - 1);
+            break;
+        default:
+            value = lua_typename(L, lua_type(L, -1));
+            break;
+        }
+        result += key + "=" + value;
+        lua_pop(L, 1);
+    }
+    return result + "}";
+}
+
+// Turns the object on the top of the stack into a variable object.
+Variable Target::makeVariable(lua_State* L, const std::string& name)
+{
+    Variable var;
+    var.name = name;
+    switch (lua_type(L, -1))
+    {
+    case LUA_TNUMBER:
+    {
+        var.value = convertNumberToString(L, -1);
+        break;
+    }
+    case LUA_TSTRING:
+        var.value = lua_tostring(L, -1);
+        break;
+    case LUA_TBOOLEAN:
+        var.value = lua_toboolean(L, -1) ? "true" : "false";
+        break;
+    case LUA_TTABLE:
+    {
+        var.value = printTable(L, -1, 2);
+        var.variableReference = variableRefId;
+        lua_pushvalue(L, -1);
+        int ref = lua_ref(L, -1);
+        lua_pop(L, 1);
+        variableContexts[variableRefId] = VariableContext::makeTable(ref);
+        variableRefId++;
+        break;
+    }
+    default:
+        var.value = lua_typename(L, lua_type(L, -1));
+        break;
+    }
+    return var;
+}
+
+// Gets all local variables of a lua_State* and its frame at a certain level, given that
+// such a frame exists.
+std::vector<Variable> Target::getLocalsHelper(lua_State* L, int level)
+{
+    const char* name;
+    int n = 1;
+    std::vector<Variable> vars;
+    while (true)
+    {
+        name = lua_getlocal(L, level, n);
+        if (name == nullptr)
+            break;
+        vars.push_back(makeVariable(L, name));
+        lua_pop(L, 1);
+        n++;
+    }
+    return vars;
+}
+
+// Gets all upvalues of a lua_State* and it stack frame ata certain level, given
+// that such a frame exists
+std::vector<Variable> Target::getUpvaluesHelper(lua_State* L, int level)
+{
+    std::vector<Variable> vars;
+    lua_Debug ar = {};
+    lua_getinfo(L, level, "f", &ar);
+    int n = 1;
+    const char* name;
+    while (true)
+    {
+        name = lua_getupvalue(L, -1, n);
+        if (name == nullptr)
+            break;
+        Variable var = makeVariable(L, name);
+        lua_pop(L, 1);
+        vars.push_back(var);
+        n++;
+    }
+    lua_pop(L, 1);
+    return vars;
+}
+
+// Gets all variables from a table at index idx of the stack
+std::vector<Variable> Target::getTableHelper(lua_State* L, int idx)
+{
+    std::vector<Variable> vars;
+    int absoluteIndex = lua_absindex(L, idx);
+    lua_pushnil(L);
+    while (lua_next(L, absoluteIndex))
+    {
+        std::string key = getKeyFromTableType(L);
+        vars.push_back(makeVariable(L, key));
+        lua_pop(L, 1);
+    }
+    return vars;
+}
+
+std::optional<std::vector<Variable>> Target::getLocals(int threadId, int level)
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+    {
+        return std::nullopt;
+    }
+    auto it = threadIdToState.find(threadId);
+    if (it == threadIdToState.end())
+    {
+        return std::nullopt;
+    }
+    lua_State* L = it->second;
+    if (level >= lua_stackdepth(L))
+        return std::nullopt;
+    return getLocalsHelper(L, level);
+}
+
+std::optional<std::vector<Variable>> Target::getVariables(int varRef)
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+    {
+        return std::nullopt;
+    }
+    auto it = variableContexts.find(varRef);
+    if (it == variableContexts.end())
+    {
+        return std::nullopt;
+    }
+    VariableContext context = it->second;
+    if (auto it2 = variableCache.find(varRef); it2 != variableCache.end())
+    {
+        return it2->second;
+    }
+    std::vector<Variable> vars;
+    if (context.type == VariablesContextType::Locals)
+    {
+        vars = getLocalsHelper(threadIdToState[context.threadId], context.level);
+    }
+    else if (context.type == VariablesContextType::Upvalues)
+    {
+        vars = getUpvaluesHelper(threadIdToState[context.threadId], context.level);
+    }
+    else
+    {
+        lua_rawgeti(childRuntime->GL, LUA_REGISTRYINDEX, context.luaref);
+        vars = getTableHelper(childRuntime->GL, -1);
+        lua_pop(childRuntime->GL, 1);
+    }
+    variableCache[varRef] = vars;
+    return vars;
+}
+
 bool Target::continueProcess()
 {
 
@@ -613,6 +880,12 @@ bool Target::continueProcess()
     stackframeId = 0;
     stateToStackFrame.clear();
     idToStackFrameInfo.clear();
+
+    variableRefId = 1;
+    variableContexts.clear();
+    variableCache.clear();
+    scopeCache.clear();
+
     paused = false;
     childRuntime->continueDebug();
     return true;

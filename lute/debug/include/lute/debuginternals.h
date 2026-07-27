@@ -5,6 +5,8 @@
 
 #include "Luau/DenseHash.h"
 
+#include "lua.h"
+
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -54,6 +56,38 @@ struct StackFrame
     int column = 0;
 };
 
+enum class VariablesContextType
+{
+    Locals,
+    Upvalues,
+    Table
+};
+
+struct VariableContext
+{
+    int variableReference;
+    VariablesContextType type;
+    std::string name;
+    int threadId; // for locals
+    int level;    // for locals
+    int luaref;   // for tables
+
+    explicit VariableContext(int variableReference, VariablesContextType type, int threadId = -1, int level = -1, int luaref = -1);
+    static VariableContext makeLocals(int variableReference, int threadId, int level);
+    static VariableContext makeUpvalues(int variableReference, int threadId, int level);
+    static VariableContext makeTable(int variableReference, int luaref);
+};
+
+struct Variable
+{
+    std::string name;
+    // a one line representation, especially if variable is a table
+    std::string value;
+    std::string type;
+    // for tables
+    int variableReference = -1;
+};
+
 struct LaunchConfig
 {
     // onBreakpointInstall() signals we tried to install a bp, regardless of ultimate success or failure
@@ -95,6 +129,9 @@ struct Target
     std::vector<Thread> getThreads() const;
     std::optional<StackFrame> getStackFrame(int threadId, int level);
     std::optional<std::vector<StackFrame>> getStackTrace(int threadId, int startLevel = 0, int maximumLevel = 0);
+    std::optional<std::vector<VariableContext>> getScopes(int threadId, int level);
+    std::optional<std::vector<Variable>> getVariables(int varRef);
+    std::optional<std::vector<Variable>> getLocals(int threadId, int level);
 
     // For actively running scripts:
     bool launch(const std::string& sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
@@ -142,6 +179,12 @@ private:
     std::unordered_map<int, std::unordered_map<int, StackFrame>> stateToStackFrame; // thread id -> level -> stackFrame
     std::unordered_map<int, std::pair<int, int>> idToStackFrameInfo;                // stack frame id -> stack frame's (thread id, level)
 
+    // variable information
+    std::unordered_map<int, std::vector<VariableContext>> scopeCache; // stack frame id -> scope
+    std::unordered_map<int, std::vector<Variable>> variableCache;     // var reference -> all variables under that reference
+    std::unordered_map<int, VariableContext> variableContexts;        // var reference -> variableContext
+    int variableRefId = 1;
+
     // for require contexts
     std::unique_ptr<RequireCtx> requireCtx;
 
@@ -153,6 +196,11 @@ private:
     bool installBreakpoint(lua_State* L, Breakpoint& bp);
     bool uninstallBreakpoint(lua_State* L, Breakpoint& bp);
     std::pair<std::vector<Breakpoint>, std::vector<Breakpoint>> modifyPendingBreakpoints(lua_State* L);
+
+    Variable makeVariable(lua_State* L, const std::string& name);
+    std::vector<Variable> getLocalsHelper(lua_State* L, int level);
+    std::vector<Variable> getUpvaluesHelper(lua_State* L, int level);
+    std::vector<Variable> getTableHelper(lua_State* L, int idx);
 
     void installBpHitCallback();
     void installExitCallback();
