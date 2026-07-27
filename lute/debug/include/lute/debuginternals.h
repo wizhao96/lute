@@ -10,6 +10,7 @@
 #include <optional>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 struct lua_State;
@@ -35,13 +36,23 @@ struct Breakpoint
     explicit Breakpoint(int id, std::string sourcePath, int line, BreakpointStatus status);
 };
 
+// Each Thread represents one coroutine in our Lute runtime.
+struct Thread
+{
+    int id = -1;
+    std::string name;
+    Thread() = default; // for unordered_map
+    Thread(int id, std::string name);
+    bool operator==(const Thread& other) const;
+};
+
 struct LaunchConfig
 {
     std::function<void(const Breakpoint& bp)> onBreakpointInstall;
     std::function<void(const Breakpoint& bp)> onBreakpointUninstall;
-    std::function<void(const Breakpoint& bp)> onBreakpointHit;
+    std::function<void(const Thread& thread, const Breakpoint& bp)> onBreakpointHit;
     std::function<void(bool success)> onExit;
-    std::function<void()> onPause;
+    std::function<void(const Thread& thread)> onPause;
 };
 
 struct Target
@@ -72,6 +83,9 @@ struct Target
     std::optional<Breakpoint> getBreakpointById(int breakpointId) const;
     std::optional<Breakpoint> getBreakpointBySourceLine(std::string source, int line) const;
 
+    // For inspection while paused:
+    std::vector<Thread> getThreads() const;
+
     // For actively running scripts:
     bool launch(std::string sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
     bool continueProcess();
@@ -90,7 +104,7 @@ private:
     bool paused = true;
     bool launched = false;
     std::unordered_map<int, Breakpoint> breakpoints; // breakpoint id -> breakpoint object (this is unordered_map to support erase)
-    bool continueRequestedBp = false;
+    std::unordered_set<lua_State*> continueRequestedBp; // if the thread's lua_State* is in this set, we skip the next bp it hits
     std::optional<Breakpoint> bpHit;
     LaunchConfig launchConfig;
 
@@ -105,6 +119,11 @@ private:
     // for require contexts
     std::unique_ptr<RequireCtx> requireCtx;
 
+    // thread information
+    int threadId = 0;
+    std::unordered_map<lua_State*, Thread> stateToThread; // lua_State* -> thread information about that state
+    std::unordered_map<int, lua_State*> threadIdToState;  // thread id -> lua_State*
+
     // private methods are meant for internal calls, so these don't lock targetMutex
     std::optional<Breakpoint> getBreakpointBySourceLineHelper(std::string source, int line) const;
     std::optional<Breakpoint> getBreakpointByIdHelper(int breakpointId) const;
@@ -115,5 +134,6 @@ private:
 
     void installBpHitCallback();
     void installExitCallback();
+    void installThreadCallback();
 };
 } // namespace debug
