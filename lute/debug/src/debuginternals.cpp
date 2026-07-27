@@ -526,7 +526,6 @@ bool Target::continueProcess()
             if (currentBp && currentBp->status == BreakpointStatus::Installed)
                 continueRequestedBp.insert(stoppedThread);
             bpHit = std::nullopt;
-            stoppedBpLine = -1;
         }
         childRuntime->runningThreads.push_back({true, getRefForThread(stoppedThread), 0});
         // This schedule() wakes up the runtime in runContinuously() to re-run runToCompletion() in case that has exited. This is a no-op if
