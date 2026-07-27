@@ -1,6 +1,5 @@
 #include "lute/debuginternals.h"
 
-#include "lute/common.h"
 #include "lute/require.h"
 #include "lute/requirevfs.h"
 
@@ -21,6 +20,8 @@
 #include <tuple>
 #include <unordered_map>
 #include <vector>
+
+#include "lstate.h"
 
 namespace debug
 {
@@ -325,7 +326,7 @@ bool Target::launch(const std::string& sourcePath, const std::vector<std::string
     {
         std::lock_guard lock(targetMutex);
         // launch() cannot be called twice from the same target.
-        if(launched)
+        if (launched)
             return false;
         childRuntime = std::make_unique<Runtime>(parentRuntime.reporter, true);
         // Set up require system before launch.
@@ -426,6 +427,7 @@ void Target::installBpHitCallback()
             return;
         }
         target->stoppedBpLine = line;
+        target->stoppedBpSavedPc = L->ci->savedpc;
         std::string chunkname = info.source;
         std::optional<Breakpoint> bp = target->getBreakpointBySourceLineHelper(getSourceFromChunk(chunkname), line);
         // Only stop execution on installed breakpoints; otherwise, don't stop.
@@ -768,6 +770,14 @@ Variable Target::makeVariable(lua_State* L, const std::string& name)
 // such a frame exists.
 std::vector<Variable> Target::getLocalsHelper(lua_State* L, int level)
 {
+    // when hitting a bp we try to re-enter
+    bool fixedSavedpc = false;
+    const Instruction* original = L->ci->savedpc;
+    if (level == 0 && L == stoppedThread && bpHit && L->ci)
+    {
+        L->ci->savedpc = stoppedBpSavedPc;
+        fixedSavedpc = true;
+    }
     const char* name;
     int n = 1;
     std::vector<Variable> vars;
@@ -780,6 +790,8 @@ std::vector<Variable> Target::getLocalsHelper(lua_State* L, int level)
         lua_pop(L, 1);
         n++;
     }
+    if (fixedSavedpc)
+        L->ci->savedpc = original;
     return vars;
 }
 
@@ -883,7 +895,6 @@ std::optional<std::vector<Variable>> Target::getVariablesByScopeType(int threadI
     );
     if (it == scopes->end())
     {
-        fprintf(stderr, "nullopt");
         return std::nullopt;
     }
     return getVariablesHelper(it->variableReference);
@@ -911,6 +922,7 @@ bool Target::continueProcess()
             if (currentBp && currentBp->status == BreakpointStatus::Installed)
                 continueRequestedBp.insert(stoppedThread);
             bpHit = std::nullopt;
+            stoppedBpSavedPc = nullptr;
             stoppedBpLine = -1;
         }
         childRuntime->runningThreads.push_back({true, getRefForThread(stoppedThread), 0});

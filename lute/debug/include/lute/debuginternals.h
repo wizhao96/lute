@@ -7,6 +7,7 @@
 
 #include "lua.h"
 
+#include <cstdint>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -166,10 +167,11 @@ private:
     lua_State* scriptThread = nullptr;
     // our stopped thread that we need to requeue when we continue
     lua_State* stoppedThread = nullptr;
-    // our stopped line if we hit a breakpoint. we need to store this because
+    // our stopped line/instruction if we hit a breakpoint. we need to store this because
     // when we hit a breakpoint, the VM eventually resets the PC back one to support hitting
     // the breakpoint again. this messes up lua_getinfo() calls, so we store it directly.
     int stoppedBpLine = -1;
+    const uint32_t* stoppedBpSavedPc = nullptr;
 
     // thread information
     int threadId = 0;
