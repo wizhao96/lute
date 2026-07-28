@@ -501,24 +501,25 @@ TEST_SUITE("Debug")
         {
             const std::vector<Thread>& threads = target.getThreads();
             REQUIRE(threads.size() == 1);
-            int threadId = threads.at(0).id;
+            std::optional<std::vector<StackFrame>> stackframe = target.getStackTrace(threads.at(0).id);
+            REQUIRE(stackframe.has_value());
             // stack frame at level 0
-            std::optional<std::vector<VariableScope>> scopes = target.getScopes(threadId, 0);
+            std::optional<std::vector<VariableScope>> scopes = target.getScopes(stackframe->at(0).id);
             REQUIRE(scopes.has_value());
             checkScope(*scopes, VariableScopeType::Locals, "Locals", 0, 0);
             checkScope(*scopes, VariableScopeType::Upvalues, "Upvalues", 0, 0);
-            std::optional<std::vector<Variable>> upvalues0 = target.getVariablesByScopeType(threadId, 0, VariableScopeType::Upvalues);
+            std::optional<std::vector<Variable>> upvalues0 = target.getVariablesByScopeType(stackframe->at(0).id, VariableScopeType::Upvalues);
             REQUIRE(upvalues0.has_value());
             checkVariable(*upvalues0, "a", "24", "number", false);
             checkVariable(*upvalues0, "_b", "1.2", "number", false);
-            std::optional<std::vector<Variable>> locals0 = target.getVariablesByScopeType(threadId, 0, VariableScopeType::Locals);
+            std::optional<std::vector<Variable>> locals0 = target.getVariablesByScopeType(stackframe->at(0).id, VariableScopeType::Locals);
             checkVariable(*locals0, "_k", "25.2", "number", false);
             // stack frame at level 1
-            scopes = target.getScopes(threadId, 1);
+            scopes = target.getScopes(stackframe->at(1).id);
             REQUIRE(scopes.has_value());
             checkScope(*scopes, VariableScopeType::Locals, "Locals", 0, 1);
             checkScope(*scopes, VariableScopeType::Upvalues, "Upvalues", 0, 1);
-            std::optional<std::vector<Variable>> locals1 = target.getVariablesByScopeType(threadId, 1, VariableScopeType::Locals);
+            std::optional<std::vector<Variable>> locals1 = target.getVariablesByScopeType(stackframe->at(1).id, VariableScopeType::Locals);
             REQUIRE(locals1.has_value());
             checkVariable(*locals1, "a", "24", "number", false);
             checkVariable(*locals1, "_b", "1.2", "number", false);
@@ -539,7 +540,7 @@ TEST_SUITE("Debug")
             table = target.getVariables(ref3);
             REQUIRE(table.has_value());
             checkVariable(*table, "r", "13", "number", false);
-            std::optional<std::vector<Variable>> upvalues1 = target.getVariablesByScopeType(threadId, 1, VariableScopeType::Upvalues);
+            std::optional<std::vector<Variable>> upvalues1 = target.getVariablesByScopeType(stackframe->at(1).id, VariableScopeType::Upvalues);
             REQUIRE(upvalues1.has_value());
             CHECK(upvalues1->size() == 0);
             target.continueProcess();

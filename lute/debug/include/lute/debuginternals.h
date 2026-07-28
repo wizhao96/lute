@@ -135,9 +135,9 @@ struct Target
     std::vector<Thread> getThreads() const;
     std::optional<StackFrame> getStackFrame(int threadId, int level);
     std::optional<std::vector<StackFrame>> getStackTrace(int threadId, int startLevel = 0, int maximumLevel = 0);
-    std::optional<std::vector<VariableScope>> getScopes(int threadId, int level);
+    std::optional<std::vector<VariableScope>> getScopes(int frameId);
     std::optional<std::vector<Variable>> getVariables(int varRef);
-    std::optional<std::vector<Variable>> getVariablesByScopeType(int threadId, int level, VariableScopeType contextType);
+    std::optional<std::vector<Variable>> getVariablesByScopeType(int frameId, VariableScopeType contextType);
 
     // For actively running scripts:
     bool launch(const std::string& sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});

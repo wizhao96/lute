@@ -628,11 +628,15 @@ std::optional<std::vector<VariableScope>> Target::getScopesHelper(int threadId, 
     return contexts;
 }
 
-std::optional<std::vector<VariableScope>> Target::getScopes(int threadId, int level)
+std::optional<std::vector<VariableScope>> Target::getScopes(int frameId)
 {
     std::unique_lock lock(targetMutex);
     if (!paused)
         return std::nullopt;
+    auto it = idToStackFrameInfo.find(frameId);
+    if (it == idToStackFrameInfo.end())
+        return std::nullopt;
+    auto [threadId, level] = it->second;
     return getScopesHelper(threadId, level);
 }
 
@@ -875,13 +879,15 @@ std::optional<std::vector<Variable>> Target::getVariables(int varRef)
     return getVariablesHelper(varRef);
 }
 
-std::optional<std::vector<Variable>> Target::getVariablesByScopeType(int threadId, int level, VariableScopeType contextType)
+std::optional<std::vector<Variable>> Target::getVariablesByScopeType(int frameId, VariableScopeType contextType)
 {
     std::unique_lock lock(targetMutex);
     if (!paused)
-    {
         return std::nullopt;
-    }
+    auto stackFrame = idToStackFrameInfo.find(frameId);
+    if (stackFrame == idToStackFrameInfo.end())
+        return std::nullopt;
+    auto [threadId, level] = stackFrame->second;
     std::optional<std::vector<VariableScope>> scopes = getScopesHelper(threadId, level);
     if (!scopes)
         return std::nullopt;
