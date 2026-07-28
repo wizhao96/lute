@@ -429,9 +429,8 @@ static int target_getStackTrace(lua_State* L)
 static int target_getScopes(lua_State* L)
 {
     auto target = getTarget(L, 1);
-    int threadId = luaL_checkinteger(L, 2);
-    int level = luaL_checkinteger(L, 3);
-    std::optional<std::vector<debug::VariableScope>> scopes = target->getScopes(threadId, level);
+    int frameId = luaL_checkinteger(L, 2);
+    std::optional<std::vector<debug::VariableScope>> scopes = target->getScopes(frameId);
     if (!scopes)
     {
         checkStack(L, 1);
@@ -473,11 +472,10 @@ static int target_getVariables(lua_State* L)
 static int target_getVariablesByScopeType(lua_State* L)
 {
     auto target = getTarget(L, 1);
-    int threadId = luaL_checkinteger(L, 2);
-    int level = luaL_checkinteger(L, 3);
-    const char* typeStr = luaL_checkstring(L, 4);
+    int frameId = luaL_checkinteger(L, 2);
+    const char* typeStr = luaL_checkstring(L, 3);
     debug::VariableScopeType type = scopeStringToType(typeStr);
-    std::optional<std::vector<debug::Variable>> variables = target->getVariablesByScopeType(threadId, level, type);
+    std::optional<std::vector<debug::Variable>> variables = target->getVariablesByScopeType(frameId, type);
     if (!variables)
     {
         checkStack(L, 1);
