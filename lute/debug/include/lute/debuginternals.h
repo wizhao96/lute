@@ -170,8 +170,8 @@ private:
     // our stopped line/instruction if we hit a breakpoint. we need to store this because
     // when we hit a breakpoint, the VM eventually resets the PC back one to support hitting
     // the breakpoint again. this messes up lua_getinfo() calls, so we store it directly.
-    int stoppedBpLine = -1;
-    const uint32_t* stoppedBpSavedPc = nullptr;
+    int stoppedLine = -1;
+    const uint32_t* stoppedPc = nullptr;
 
     // thread information
     int threadId = 0;

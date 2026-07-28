@@ -426,8 +426,8 @@ void Target::installBpHitCallback()
             target->parentRuntime.reporter.reportError(Luau::format("breakpoint hit at line %d could not find a runtime source", line));
             return;
         }
-        target->stoppedBpLine = line;
-        target->stoppedBpSavedPc = L->ci->savedpc;
+        target->stoppedLine = line;
+        target->stoppedPc = L->ci->savedpc;
         std::string chunkname = info.source;
         std::optional<Breakpoint> bp = target->getBreakpointBySourceLineHelper(getSourceFromChunk(chunkname), line);
         // Only stop execution on installed breakpoints; otherwise, don't stop.
@@ -548,8 +548,8 @@ std::optional<StackFrame> Target::getStackFrameHelper(int threadId, int level)
             frame.sourcePath = getSourceFromChunk(ar.source);
             // edge case: when we hit a breakpoint, the pc is sent backward one
             // so that we can hit it again, so lua_getinfo() fails.
-            if (level == 0 && bpHit)
-                frame.line = stoppedBpLine;
+            if (level == 0 && stoppedLine != -1)
+                frame.line = stoppedLine;
             else
                 frame.line = ar.currentline;
         }
@@ -779,7 +779,7 @@ std::vector<Variable> Target::getLocalsHelper(lua_State* L, int level)
     const Instruction* original = L->ci->savedpc;
     if (level == 0 && L == stoppedThread && bpHit && L->ci)
     {
-        L->ci->savedpc = stoppedBpSavedPc;
+        L->ci->savedpc = stoppedPc;
         fixedSavedpc = true;
     }
     const char* name;
@@ -928,9 +928,9 @@ bool Target::continueProcess()
             if (currentBp && currentBp->status == BreakpointStatus::Installed)
                 continueRequestedBp.insert(stoppedThread);
             bpHit = std::nullopt;
-            stoppedBpSavedPc = nullptr;
-            stoppedBpLine = -1;
         }
+        stoppedPc = nullptr;
+        stoppedLine = -1;
         childRuntime->runningThreads.push_back({true, getRefForThread(stoppedThread), 0});
         // This schedule() wakes up the runtime in runContinuously() to re-run runToCompletion() in case that has exited. This is a no-op if
         // runToCompletion() has not exited.
@@ -974,6 +974,16 @@ bool Target::pauseProcess()
         target->stoppedThread = L;
         // We transition into a paused state. Let's modify all pending breakpoints.
         auto [installed, uninstalled] = target->modifyPendingBreakpoints(target->scriptThread);
+        lua_Debug info = {};
+        lua_getinfo(L, 0, "sl", &info);
+        int line = info.currentline;
+        if (!info.source)
+        {
+            target->parentRuntime.reporter.reportError(Luau::format("breakpoint hit at line %d could not find a runtime source", line));
+            return;
+        }
+        target->stoppedLine = line;
+        target->stoppedPc = L->ci->savedpc;
         lua_break(L);
         // Clear out the interrupt callback after we are done.
         lua_callbacks(L)->interrupt = nullptr;
