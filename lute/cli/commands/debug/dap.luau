@@ -96,9 +96,10 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			local capabilities = {
 				supportsConfigurationDoneRequest = true,
 				supportsTerminateRequest = true,
+				supportsLoadedSourcesRequest = true,
 				supportsVariableType = true,
 			}
-			ioSession.writeResponse(reqSeq, true, command, nil, capabilities)
+			ioSession.writeResponse(reqSeq, true, command, nil, capabilities, nil, capabilities)
 			ioSession.writeEvent("initialized")
 		elseif command == "configurationDone" then
 			configurationDone = true
