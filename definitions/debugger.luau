@@ -131,7 +131,7 @@ export type Target = {
 	getVariablesByScopeType: (self: Target, frameId: number, sourceType: VariableScopeType) -> { Variable }?,
 	--- Steps into the next line of the code, including into a function if the line contains a function.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
-	stepIn: (self: Target) -> boolean,
+	step: (self: Target, type: StepType) -> boolean,
 	--- Steps into the next line of the code, including into a function if the line contains a function.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
 	stepIn: (self: Target) -> boolean,
@@ -141,6 +141,9 @@ export type Target = {
 	--- Steps out of the current function call.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
 	stepOut: (self: Target) -> boolean,
+	--- Gets our current line of execution when we are stopped.
+	--- Returns -1 if we are not stopped.
+	getLine: (self: Target) -> number,
 }
 
 --- Create a new Target handle on the current VM.
