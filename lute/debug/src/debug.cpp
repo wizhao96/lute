@@ -348,6 +348,17 @@ static int target_stepOver(lua_State* L)
     return 1;
 }
 
+// target.getLine()
+// returns a integer
+static int target_getLine(lua_State* L)
+{
+    Target* target = getTarget(L, 1);
+    int line = target->getLine();
+    checkStack(L, 1);
+    lua_pushinteger(L, line);
+    return 1;
+}
+
 static std::shared_ptr<Ref> getOptionalCallback(lua_State* L, int tableIndex, const char* field)
 {
     lua_getfield(L, tableIndex, field);
@@ -645,6 +656,7 @@ static const std::unordered_map<std::string, lua_CFunction> kTargetMethods = {
     {"stepIn", debug::target_stepIn},
     {"stepOut", debug::target_stepOut},
     {"stepOver", debug::target_stepOver},
+    {"getLine", debug::target_getLine},
 };
 
 static void initializeTarget(lua_State* L)
