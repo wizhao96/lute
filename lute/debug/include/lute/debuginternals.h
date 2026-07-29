@@ -103,6 +103,14 @@ struct LaunchConfig
     std::function<void(const Thread& thread, const Breakpoint& bp)> onBreakpointHit;
     std::function<void(bool success)> onExit;
     std::function<void(const Thread& thread)> onPause;
+    std::function<void()> onStepStop;
+};
+
+enum class StepType
+{
+    StepOver,
+    StepIn,
+    StepOut,
 };
 
 struct Target
@@ -143,6 +151,9 @@ struct Target
     bool launch(const std::string& sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
     bool continueProcess();
     bool pauseProcess();
+    bool step(StepType type);
+
+    int getLine();
 
 private:
     // targetMutex protects the entire Target, since Target can be accessed from the main thread
@@ -195,14 +206,19 @@ private:
     // for require contexts
     std::unique_ptr<RequireCtx> requireCtx;
 
+    // only set when stepping
+    std::function<bool(int currentDepth, int currentLine)> stepPredicate;
+
     // private methods are meant for internal calls, so these don't lock targetMutex
     std::optional<Breakpoint> getBreakpointBySourceLineHelper(std::string source, int line) const;
     std::optional<Breakpoint> getBreakpointByIdHelper(int breakpointId) const;
+    void continueProcessHelper(bool isStepping);
     std::optional<StackFrame> getStackFrameHelper(int threadId, int level);
 
     bool installBreakpoint(lua_State* L, Breakpoint& bp);
     bool uninstallBreakpoint(lua_State* L, Breakpoint& bp);
     std::pair<std::vector<Breakpoint>, std::vector<Breakpoint>> modifyPendingBreakpoints(lua_State* L);
+    void computeStoppedLine(lua_State* L);
 
     Variable makeVariable(lua_State* L, const std::string& name);
 
