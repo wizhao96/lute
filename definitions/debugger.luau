@@ -13,6 +13,16 @@ export type Breakpoint = {
 	status: BreakpointStatus,
 }
 
+--- The type of step we are taking
+export type StepType = "stepIn" | "stepOut" | "stepOver"
+
+--- Information about the current step() command we are running
+export type StepInfo = {
+	type: StepType,
+	startLine: number,
+	startDepth: number,
+}
+
 --- A thread of execution, which represents one coroutine running on the runtime
 export type Thread = {
 	id: number,
@@ -69,6 +79,8 @@ export type LaunchConfig = {
 	--- called when a pauseProcess() request actually stops all threads from execution. this pause
 	--- interrupts `thread`.
 	onPause: ((thread: Thread) -> ())?,
+	--- called when our script finishes stepping. `info` reflects the information about our stepping command.
+	onStepStop: ((info: StepInfo) -> ())?,
 }
 
 --- A `Target` represents the target program under the debugger.
@@ -96,10 +108,11 @@ export type Target = {
 	--- Pauses a target script if it is running at the earliest possible opportunity. Return `true`
 	--- if the target was actually running and `false` if it was not.
 	pauseProcess: (self: Target) -> boolean,
-	--- Gets all Luau sources that have been loaded onto the debugger.
-	getLoadedSources: (self: Target) -> { string },
 	--- Gets a list of all Luau coroutines that are being used by the script.
 	getThreads: (self: Target) -> { Thread },
+	--- Gets our current line of execution when we are stopped.
+	--- Returns our current line or -1 if we are not stopped.
+	getLine: (self: Target) -> number,
 	--- Gets a stack frame on a coroutine with `threadId` at level `level` (where 0 is the shallowest). Return `nil`
 	--- if script is running or no such stack frame exists at that level.
 	getStackFrame: (self: Target, threadId: number, level: number) -> StackFrame?,
@@ -116,6 +129,18 @@ export type Target = {
 	--- Gets a set of variables belonging on the stack frame with id `frameID` with a certain scopeType.
 	--- Return `nil` if script is running or if such variables can not be found.
 	getVariablesByScopeType: (self: Target, frameId: number, sourceType: VariableScopeType) -> { Variable }?,
+	--- Steps into the next line of the code, including into a function if the line contains a function.
+	--- Returns `true` if target was paused before stepping and `false` otherwise.
+	stepIn: (self: Target) -> boolean,
+	--- Steps into the next line of the code, including into a function if the line contains a function.
+	--- Returns `true` if target was paused before stepping and `false` otherwise.
+	stepIn: (self: Target) -> boolean,
+	--- Steps over to the next line of the code, skipping over any function calls if our current line contains a function.
+	--- Returns `true` if target was paused before stepping and `false` otherwise.
+	stepOver: (self: Target) -> boolean,
+	--- Steps out of the current function call.
+	--- Returns `true` if target was paused before stepping and `false` otherwise.
+	stepOut: (self: Target) -> boolean,
 }
 
 --- Create a new Target handle on the current VM.
