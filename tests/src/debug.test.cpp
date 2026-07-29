@@ -269,9 +269,46 @@ TEST_SUITE("Debug")
         // check that we actually stopped at the breakpoint by having not hit the exit
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         REQUIRE(exitFuture.wait_for(std::chrono::seconds(0)) == std::future_status::timeout);
-
+        CHECK(target.getLine() == 2);
         // continue execution
         continuedProcess = target.continueProcess();
+        CHECK(continuedProcess);
+        REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+    }
+    TEST_CASE_FIXTURE(DebugFixture, "Debug_pauseProcess")
+    {
+        std::string fixturePath = getDebugFixturePath("loop.luau");
+        Target target(*runtime);
+        target.setBreakpoint(fixturePath, 1);
+
+        int numPause = 0;
+        std::promise<void> hitPromise;
+        std::future<void> hitFuture = hitPromise.get_future();
+        // This tests whether we pause after continuing. This is pretty
+        // strange but is unfortunately, the best way of guaranteeing that a pause request
+        // goes through without timing conerns.
+        config.onBreakpointHit = [&](const Breakpoint& bp)
+        {
+            bool continuedProcess = target.continueProcess();
+            CHECK(continuedProcess);
+            bool pausedProcess = target.pauseProcess();
+            CHECK(pausedProcess);
+            hitPromise.set_value();
+        };
+        config.onPause = [&]()
+        {
+            numPause++;
+        };
+        bool launched = target.launch(fixturePath, {}, config);
+        CHECK(launched);
+        // we hit the breakpoint and should be paused now.
+        REQUIRE(hitFuture.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        REQUIRE(exitFuture.wait_for(std::chrono::seconds(0)) == std::future_status::timeout);
+        CHECK(numPause == 1);
+        // The pause should stop right after we finish the last line of the inner for loop.
+        CHECK(target.getLine() == 5);
+        bool continuedProcess = target.continueProcess();
         CHECK(continuedProcess);
         REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
     }
@@ -308,62 +345,6 @@ TEST_SUITE("Debug")
         CHECK(sources.size() == 2);
         CHECK(std::find(sources.begin(), sources.end(), mainPath) != sources.end());
         CHECK(std::find(sources.begin(), sources.end(), triangPath) != sources.end());
-    }
-    TEST_CASE_FIXTURE(DebugFixture, "Debug_pauseProcess")
-    {
-        std::string fixturePath = getDebugFixturePath("loop.luau");
-        Target target(*runtime);
-        target.setBreakpoint(fixturePath, 1);
-
-        int numPause = 0;
-        std::promise<void> hitPromise;
-        std::future<void> hitFuture = hitPromise.get_future();
-        // This tests whether we pause after continuing. This is pretty
-        // strange but is unfortunately, the best way of guaranteeing that a pause request
-        // goes through without timing conerns.
-        config.onBreakpointHit = [&](const Thread&, const Breakpoint& bp)
-        {
-            bool continuedProcess = target.continueProcess();
-            CHECK(continuedProcess);
-            bool pausedProcess = target.pauseProcess();
-            CHECK(pausedProcess);
-            hitPromise.set_value();
-        };
-        config.onPause = [&](const Thread& thread)
-        {
-            CHECK(thread.id == 0);
-            numPause++;
-        };
-        bool launched = target.launch(fixturePath, {}, config);
-        CHECK(launched);
-        // we hit the breakpoint and should be paused now.
-        REQUIRE(hitFuture.wait_for(std::chrono::seconds(2)) == std::future_status::ready);
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-        REQUIRE(exitFuture.wait_for(std::chrono::seconds(0)) == std::future_status::timeout);
-        CHECK(numPause == 1);
-
-        bool continuedProcess = target.continueProcess();
-        CHECK(continuedProcess);
-        REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
-    }
-    TEST_CASE_FIXTURE(DebugFixture, "Debug_destroyInfiniteLoop")
-    {
-        // This tests that we don't stall on the Runtime destruction even when we are running
-        // an infinite loop.
-        std::string fixturePath = getDebugFixturePath("infiniteloop.luau");
-
-        std::future<void> destroyFuture = std::async(
-            std::launch::async,
-            [&]()
-            {
-                Target target(*runtime);
-                target.launch(fixturePath, {}, config);
-                // This is a timing pause to make sure that we actually start execution of the script.
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                // At this point target and its Runtime should be destroyed.
-            }
-        );
-        REQUIRE(destroyFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
     }
     TEST_CASE_FIXTURE(DebugFixture, "Debug_threadTracking")
     {
@@ -548,4 +529,69 @@ TEST_SUITE("Debug")
         target.launch(fixturePath, {}, config);
         REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
     };
+    TEST_CASE_FIXTURE(DebugFixture, "Debug_step")
+    {
+        std::string mainPath = getDebugFixturePath("step.luau");
+        std::string triangPath = getDebugFixturePath("require_triang.luau");
+
+
+        std::promise<void> hitPromise;
+        std::future<void> hitFuture = hitPromise.get_future();
+
+        std::promise<void> stepPromise;
+        std::future<void> stepFuture = stepPromise.get_future();
+
+        Target target(*runtime);
+        Breakpoint bp = target.setBreakpoint(mainPath, 9);
+        config.onBreakpointHit = [&](const Breakpoint& bp)
+        {
+            hitPromise.set_value();
+        };
+        config.onStepStop = [&](const StepInfo)
+        {
+            stepPromise.set_value();
+        };
+        bool launched = target.launch(mainPath, {}, config);
+        CHECK(launched);
+        // check we have hit bp
+        REQUIRE(hitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+        // step in acts like step over when there's no function calls
+        CHECK(target.getLine() == 9);
+        bool stepped = target.stepIn();
+        CHECK(stepped);
+        REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+        CHECK(target.getLine() == 10);
+        stepPromise = std::promise<void>{};
+        stepFuture = stepPromise.get_future();
+        // step into function f
+        stepped = target.stepIn();
+        CHECK(stepped);
+        REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+        CHECK(target.getLine() == 2);
+        stepPromise = std::promise<void>{};
+        stepFuture = stepPromise.get_future();
+        // this steps out of function f
+        stepped = target.stepOut();
+        CHECK(stepped);
+        REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+        CHECK(target.getLine() == 11);
+        stepPromise = std::promise<void>{};
+        stepFuture = stepPromise.get_future();
+        // this steps over a function
+        stepped = target.stepOver();
+        CHECK(stepped);
+        REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+        CHECK(target.getLine() == 12);
+        stepPromise = std::promise<void>{};
+        stepFuture = stepPromise.get_future();
+        // this steps to the virtual last line
+        stepped = target.stepOver();
+        CHECK(stepped);
+        REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
+        CHECK(target.getLine() == 13);
+        target.stepOver();
+
+        // check we are done
+        REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+    }
 }

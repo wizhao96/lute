@@ -117,7 +117,7 @@ struct LaunchConfig
     std::function<void(const Thread& thread, const Breakpoint& bp)> onBreakpointHit;
     std::function<void(bool success)> onExit;
     std::function<void(const Thread& thread)> onPause;
-    std::function<void(StepType stepType)> onStepStop;
+    std::function<void(StepInfo stepInfo)> onStepStop;
 };
 
 struct Target
