@@ -392,6 +392,16 @@ static std::function<void(const debug::Breakpoint&)> makeBreakpointCallback(std:
     };
 }
 
+// target.launch(string sourcePath, vector<string> args, LaunchConfig callbacks) where
+// LaunchConfig = {
+//     onBreakpointHit(Thread thread, Breakpoint bp) -> ()
+//     onBreakpointInstall(Breakpoint bp) -> ()
+//     onBreakpointUninstall(Breakpoint bp) -> ()
+//     onExit(bool success) -> ()
+//     onPause(Thread thread) -> ()
+//     onPrint(string message) -> ()
+// }
+// returns boolean
 static int target_launch(lua_State* L)
 {
     debug::Target* target = getTarget(L, 1);
@@ -472,6 +482,21 @@ static int target_launch(lua_State* L)
                         pushThread(L, thread);
                         pushStepInfo(L, info);
                         return 2;
+                    }
+                );
+            };
+        }
+        if (auto ref = getOptionalCallback(L, 4, "onPrint"))
+        {
+            config.onPrint = [ref, runtime](std::string message)
+            {
+                runtime->scheduleLuauCallback(
+                    ref,
+                    [message](lua_State* L)
+                    {
+                        checkStack(L, 1);
+                        lua_pushstring(L, message.c_str());
+                        return 1;
                     }
                 );
             };

@@ -81,6 +81,8 @@ export type LaunchConfig = {
 	onPause: ((thread: Thread) -> ())?,
 	--- called when our script finishes stepping on `thread`. `info` reflects the information about our stepping command.
 	onStepStop: ((thread: Thread, info: StepInfo) -> ())?,
+	--- called when print() would have printed out `message`
+	onPrint: ((message: string) -> ())?,
 }
 
 --- A `Target` represents the target program under the debugger.
