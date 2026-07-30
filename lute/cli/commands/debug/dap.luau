@@ -161,14 +161,19 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				sources = dapSources,
 			})
 		elseif command == "next" then
-			-- TODO: incorporate threads if that gets merged in
-			local stepped = target:stepOver()
+			local args = request.arguments :: json.Object
+			local threadId = args.threadId :: number
+			local stepped = target:stepOver(threadId)
 			ioSession.writeResponse(reqSeq, stepped, command)
 		elseif command == "stepIn" then
-			local stepped = target:stepIn()
+			local args = request.arguments :: json.Object
+			local threadId = args.threadId :: number
+			local stepped = target:stepIn(threadId)
 			ioSession.writeResponse(reqSeq, stepped, command)
 		elseif command == "stepOut" then
-			local stepped = target:stepOut()
+			local args = request.arguments :: json.Object
+			local threadId = args.threadId :: number
+			local stepped = target:stepOut(threadId)
 			ioSession.writeResponse(reqSeq, stepped, command)
 		-- dummy handler for threads
 		elseif command == "threads" then
