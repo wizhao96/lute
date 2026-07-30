@@ -288,7 +288,7 @@ TEST_SUITE("Debug")
         // This tests whether we pause after continuing. This is pretty
         // strange but is unfortunately, the best way of guaranteeing that a pause request
         // goes through without timing conerns.
-        config.onBreakpointHit = [&](const Breakpoint& bp)
+        config.onBreakpointHit = [&](const Thread&, const Breakpoint& bp)
         {
             bool continuedProcess = target.continueProcess();
             CHECK(continuedProcess);
@@ -296,7 +296,7 @@ TEST_SUITE("Debug")
             CHECK(pausedProcess);
             hitPromise.set_value();
         };
-        config.onPause = [&]()
+        config.onPause = [&](const Thread& thread)
         {
             numPause++;
         };
@@ -544,11 +544,11 @@ TEST_SUITE("Debug")
 
         Target target(*runtime);
         Breakpoint bp = target.setBreakpoint(mainPath, 9);
-        config.onBreakpointHit = [&](const Breakpoint& bp)
+        config.onBreakpointHit = [&](const Thread& thread, const Breakpoint& bp)
         {
             hitPromise.set_value();
         };
-        config.onStepStop = [&](const StepInfo)
+        config.onStepStop = [&](const Thread& thread, const StepInfo)
         {
             stepPromise.set_value();
         };

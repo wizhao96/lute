@@ -48,6 +48,16 @@ local function parseJsonMessage(msg: string): (json.Object, string)
 	return assert(json.asObject(json.deserialize(body)), "body is not a JSON object"), remaining
 end
 
+local kSkippedEvents = { breakpoint = true, stopped = true }
+
+local function parseNextMessage(msg: string): (json.Object, string)
+	local m, rest = parseJsonMessage(msg)
+	while m.type == "event" and kSkippedEvents[m.event :: string] do
+		m, rest = parseJsonMessage(rest)
+	end
+	return m, rest
+end
+
 test.suite("LuteDebug", function(suite)
 	-- tests specifically for DAP Stream I/O
 	suite:case("luteDebugDAPStream", function(assert)
@@ -193,7 +203,7 @@ test.suite("LuteDebug", function(suite)
 		assert.eq(source.path, normalizePath(fixturePath))
 		assert.eq(source.name, "loop.luau")
 
-		local msg7, rest7 = parseJsonMessage(rest6)
+		local msg7, rest7 = parseNextMessage(rest6)
 		assert.eq(msg7.command, "terminate")
 		assert.eq(msg7.success, true)
 

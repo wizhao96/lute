@@ -117,7 +117,7 @@ struct LaunchConfig
     std::function<void(const Thread& thread, const Breakpoint& bp)> onBreakpointHit;
     std::function<void(bool success)> onExit;
     std::function<void(const Thread& thread)> onPause;
-    std::function<void(StepInfo stepInfo)> onStepStop;
+    std::function<void(const Thread& thread, StepInfo stepInfo)> onStepStop;
 };
 
 struct Target
@@ -155,7 +155,7 @@ struct Target
     std::optional<std::vector<Variable>> getVariablesByScopeType(int frameId, VariableScopeType contextType);
 
     // For actively running scripts:
-    bool launch(const std::string& sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
+    bool launch(std::string sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
     bool continueProcess();
     bool pauseProcess();
     bool step(StepType type);

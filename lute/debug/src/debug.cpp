@@ -1,5 +1,6 @@
 #include "lute/debug.h"
 
+#include "lute/common.h"
 #include "lute/debuginternals.h"
 #include "lute/runtime.h"
 #include "lute/userdatas.h"
@@ -21,6 +22,8 @@ static void checkStack(lua_State* L, int n)
         luaL_error(L, "stack overflow while pushing return value during debugging");
 }
 
+namespace debug
+{
 static debug::Target* getTarget(lua_State* L, int index)
 {
     auto* storage = static_cast<std::shared_ptr<debug::Target>*>(lua_touserdatatagged(L, index, kTargetTag));
@@ -456,14 +459,15 @@ static int target_launch(lua_State* L)
         }
         if (auto ref = getOptionalCallback(L, 4, "onStepStop"))
         {
-            config.onStepStop = [ref, runtime](const StepInfo& info)
+            config.onStepStop = [ref, runtime](const Thread& thread, const StepInfo& info)
             {
                 runtime->scheduleLuauCallback(
                     ref,
-                    [info](lua_State* L)
+                    [thread, info](lua_State* L)
                     {
+                        pushThread(L, thread);
                         pushStepInfo(L, info);
-                        return 1;
+                        return 2;
                     }
                 );
             };
@@ -490,21 +494,6 @@ static int target_pauseProcess(lua_State* L)
     bool continued = target->pauseProcess();
     checkStack(L, 1);
     lua_pushboolean(L, continued);
-    return 1;
-}
-
-static int target_getLoadedSources(lua_State* L)
-{
-    auto target = getTarget(L, 1);
-    std::vector<std::string> sources = target->getLoadedSources();
-    checkStack(L, 1);
-    lua_createtable(L, sources.size(), 0);
-    for (int i = 0; i < (int)sources.size(); i++)
-    {
-        checkStack(L, 1);
-        lua_pushstring(L, sources[i].c_str());
-        lua_rawseti(L, -2, i + 1);
-    }
     return 1;
 }
 
@@ -634,24 +623,25 @@ static int debug_newTarget(lua_State* L)
     new (lua_newuserdatataggedwithmetatable(L, sizeof(std::shared_ptr<debug::Target>), kTargetTag)) std::shared_ptr<debug::Target>(std::move(target));
     return 1;
 }
+} // namespace debug
 
 static const std::unordered_map<std::string, lua_CFunction> kTargetMethods = {
-    {"setBreakpoint", target_setBreakpoint},
-    {"removeBreakpoint", target_removeBreakpoint},
-    {"getBreakpoints", target_getBreakpoints},
-    {"getBreakpointsByStatus", target_getBreakpointsByStatus},
-    {"getBreakpointById", target_getBreakpointById},
-    {"getBreakpointBySourceLine", target_getBreakpointBySourceLine},
-    {"launch", target_launch},
-    {"continueProcess", target_continueProcess},
-    {"pauseProcess", target_pauseProcess},
-    {"getLoadedSources", target_getLoadedSources},
-    {"getThreads", target_getThreads},
-    {"getStackFrame", target_getStackFrame},
-    {"getStackTrace", target_getStackTrace},
-    {"getScopes", target_getScopes},
-    {"getVariables", target_getVariables},
-    {"getVariablesByScopeType", target_getVariablesByScopeType}
+    {"setBreakpoint", debug::target_setBreakpoint},
+    {"removeBreakpoint", debug::target_removeBreakpoint},
+    {"getBreakpoints", debug::target_getBreakpoints},
+    {"getBreakpointsByStatus", debug::target_getBreakpointsByStatus},
+    {"getBreakpointById", debug::target_getBreakpointById},
+    {"getBreakpointBySourceLine", debug::target_getBreakpointBySourceLine},
+    {"launch", debug::target_launch},
+    {"continueProcess", debug::target_continueProcess},
+    {"pauseProcess", debug::target_pauseProcess},
+    {"getLoadedSources", debug::target_getLoadedSources},
+    {"getThreads", debug::target_getThreads},
+    {"getStackFrame", debug::target_getStackFrame},
+    {"getStackTrace", debug::target_getStackTrace},
+    {"getScopes", debug::target_getScopes},
+    {"getVariables", debug::target_getVariables},
+    {"getVariablesByScopeType", debug::target_getVariablesByScopeType},
     {"step", debug::target_step},
     {"stepIn", debug::target_stepIn},
     {"stepOut", debug::target_stepOut},
@@ -699,7 +689,7 @@ static void initializeTarget(lua_State* L)
 const char* const Debugger::properties[] = {nullptr};
 
 const luaL_Reg Debugger::lib[] = {
-    {"newTarget", debug_newTarget},
+    {"newTarget", debug::debug_newTarget},
     {nullptr, nullptr},
 };
 

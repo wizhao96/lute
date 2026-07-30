@@ -83,10 +83,11 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			})
 			ioSession.writeEvent("terminated")
 		end,
-		onStepStop = function(_stepInfo: debugger.StepInfo)
+		onStepStop = function(thread: debugger.Thread, _stepInfo: debugger.StepInfo)
 			ioSession.writeEvent("stopped", {
 				reason = "step",
-				threadId = 1,
+				threadId = thread.id,
+				allThreadsStopped = true,
 			})
 		end,
 	}
@@ -114,8 +115,8 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			-- configuration is done.
 			ioSession.writeResponse(reqSeq, true, command)
 			if launchConfig then
-				target:launch(launchConfig.program, launchConfig.args, launchCallbacks)
-				ioSession.writeResponse(launchSeq, true, "launch")
+				local launched = target:launch(launchConfig.program, launchConfig.args, launchCallbacks)
+				ioSession.writeResponse(launchSeq, launched, "launch")
 			end
 		elseif command == "setBreakpoints" then
 			local args = request.arguments :: json.Object
@@ -143,8 +144,8 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				launchSeq = reqSeq
 				-- configuration is already done, respond to launch
 				if configurationDone then
-					target:launch(launchConfig.program, launchConfig.args, launchCallbacks)
-					ioSession.writeResponse(reqSeq, true, command)
+					local launched = target:launch(launchConfig.program, launchConfig.args, launchCallbacks)
+					ioSession.writeResponse(reqSeq, launched, command)
 				end
 			end
 		elseif command == "loadedSources" then

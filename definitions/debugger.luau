@@ -79,8 +79,8 @@ export type LaunchConfig = {
 	--- called when a pauseProcess() request actually stops all threads from execution. this pause
 	--- interrupts `thread`.
 	onPause: ((thread: Thread) -> ())?,
-	--- called when our script finishes stepping. `info` reflects the information about our stepping command.
-	onStepStop: ((info: StepInfo) -> ())?,
+	--- called when our script finishes stepping on `thread`. `info` reflects the information about our stepping command.
+	onStepStop: ((thread: Thread, info: StepInfo) -> ())?,
 }
 
 --- A `Target` represents the target program under the debugger.
@@ -141,9 +141,6 @@ export type Target = {
 	--- Steps out of the current function call.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
 	stepOut: (self: Target) -> boolean,
-	--- Gets our current line of execution when we are stopped.
-	--- Returns -1 if we are not stopped.
-	getLine: (self: Target) -> number,
 }
 
 --- Create a new Target handle on the current VM.
