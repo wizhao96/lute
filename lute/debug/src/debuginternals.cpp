@@ -1028,31 +1028,40 @@ bool Target::pauseProcess()
     return true;
 }
 
-bool Target::step(StepType type)
+bool Target::step(int threadId, StepType type)
 {
     std::unique_lock lock(targetMutex);
     if (!launched || !paused)
         return false;
-    int startLine = stoppedLine, startDepth = lua_stackdepth(stoppedThread);
-    stepInfo = {type, startLine, startDepth};
-    lua_singlestep(stoppedThread, 1);
+    if (threadIdToState.find(threadId) == threadIdToState.end())
+        return false;
+    lua_State* stepThread = threadIdToState[threadId];
+    Thread info = stateToThread[stepThread];
+    int startLine = stoppedLine, startDepth = lua_stackdepth(stepThread);
+    stepInfo = {info, type, startLine, startDepth};
+    lua_singlestep(stepThread, 1);
     lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
     cb->debugstep = [](lua_State* L, lua_Debug* ar)
     {
         auto target = static_cast<Target*>(lua_callbacks(L)->userdata);
         std::unique_lock lock(target->targetMutex);
-        if (L != target->stoppedThread)
-        {
-            return;
-        }
-        int line = ar->currentline;
-        int depth = lua_stackdepth(L);
         if (!target->stepInfo)
         {
-            target->parentRuntime.reporter.reportError(Luau::format("target lacks stepping info even while stepping at line %d", line));
+            target->parentRuntime.reporter.reportError(Luau::format("target lacks stepping info even while stepping at line %d", ar->currentline));
+            return;
         }
         bool stopStepping = false;
         StepInfo stepInfo = *target->stepInfo;
+        if (target->threadIdToState.find(stepInfo.thread.id) == target->threadIdToState.end())
+        {
+            target->parentRuntime.reporter.reportError(Luau::format("could not finding stepping thread %d in thread map", stepInfo.thread.id));
+            return;
+        }
+        lua_State* steppingThread = target->threadIdToState[stepInfo.thread.id];
+        if (L != steppingThread)
+            return;
+        int line = ar->currentline;
+        int depth = lua_stackdepth(L);
         switch (stepInfo.type)
         {
         case StepType::StepIn:
@@ -1105,19 +1114,19 @@ bool Target::step(StepType type)
     return true;
 }
 
-bool Target::stepIn()
+bool Target::stepIn(int threadId)
 {
-    return step(StepType::StepIn);
+    return step(threadId, StepType::StepIn);
 }
 
-bool Target::stepOver()
+bool Target::stepOver(int threadId)
 {
-    return step(StepType::StepOver);
+    return step(threadId, StepType::StepOver);
 }
 
-bool Target::stepOut()
+bool Target::stepOut(int threadId)
 {
-    return step(StepType::StepOut);
+    return step(threadId, StepType::StepOut);
 }
 
 } // namespace debug

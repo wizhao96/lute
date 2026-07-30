@@ -129,18 +129,18 @@ export type Target = {
 	--- Gets a set of variables belonging on the stack frame with id `frameID` with a certain scopeType.
 	--- Return `nil` if script is running or if such variables can not be found.
 	getVariablesByScopeType: (self: Target, frameId: number, sourceType: VariableScopeType) -> { Variable }?,
-	--- Steps into the next line of the code, including into a function if the line contains a function.
+	--- Steps into the next line of the code on `threadId`, including into a function if the line contains a function.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
-	step: (self: Target, type: StepType) -> boolean,
-	--- Steps into the next line of the code, including into a function if the line contains a function.
+	step: (self: Target, threadId: number, type: StepType) -> boolean,
+	--- Steps into the next line of the code on `threadId`, including into a function if the line contains a function.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
-	stepIn: (self: Target) -> boolean,
-	--- Steps over to the next line of the code, skipping over any function calls if our current line contains a function.
+	stepIn: (self: Target, threadId: number) -> boolean,
+	--- Steps over to the next line of the code on `threadId`, skipping over any function calls if our current line contains a function.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
-	stepOver: (self: Target) -> boolean,
-	--- Steps out of the current function call.
+	stepOver: (self: Target, threadId: number) -> boolean,
+	--- Steps out of the current function call on `threadId`.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
-	stepOut: (self: Target) -> boolean,
+	stepOut: (self: Target, threadId: number) -> boolean,
 }
 
 --- Create a new Target handle on the current VM.

@@ -305,25 +305,27 @@ static int target_getLoadedSources(lua_State* L)
     return 1;
 }
 
-// target.step(StepType type)
+// target.step(int threadId, StepType type)
 // returns a boolean
 static int target_step(lua_State* L)
 {
     Target* target = getTarget(L, 1);
-    const char* statusStr = luaL_checkstring(L, 2);
+    int threadId = luaL_checkinteger(L, 2);
+    const char* statusStr = luaL_checkstring(L, 3);
     StepType type = stepStringToStatus(statusStr);
-    bool step = target->step(type);
+    bool step = target->step(threadId, type);
     checkStack(L, 1);
     lua_pushboolean(L, step);
     return 1;
 }
 
-// target.stepIn()
+// target.stepIn(int threadId)
 // returns a boolean
 static int target_stepIn(lua_State* L)
 {
     Target* target = getTarget(L, 1);
-    bool step = target->stepIn();
+    int threadId = luaL_checkinteger(L, 2);
+    bool step = target->stepIn(threadId);
     checkStack(L, 1);
     lua_pushboolean(L, step);
     return 1;
@@ -334,7 +336,8 @@ static int target_stepIn(lua_State* L)
 static int target_stepOut(lua_State* L)
 {
     Target* target = getTarget(L, 1);
-    bool step = target->stepOut();
+    int threadId = luaL_checkinteger(L, 2);
+    bool step = target->stepOut(threadId);
     checkStack(L, 1);
     lua_pushboolean(L, step);
     return 1;
@@ -345,7 +348,8 @@ static int target_stepOut(lua_State* L)
 static int target_stepOver(lua_State* L)
 {
     Target* target = getTarget(L, 1);
-    bool step = target->stepOver();
+    int threadId = luaL_checkinteger(L, 2);
+    bool step = target->stepOver(threadId);
     checkStack(L, 1);
     lua_pushboolean(L, step);
     return 1;

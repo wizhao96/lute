@@ -440,7 +440,7 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 			true
 		)
 		check.eq(target:getLine(), 9)
-		target:step("stepIn")
+		target:step(0, "stepIn")
 		check.eq(
 			waitUntil(function()
 				return stepsDone == 1
@@ -448,7 +448,7 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 			true
 		)
 		check.eq(target:getLine(), 10)
-		target:stepIn()
+		target:stepIn(0)
 		check.eq(
 			waitUntil(function()
 				return stepsDone == 2
@@ -456,7 +456,7 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 			true
 		)
 		check.eq(target:getLine(), 2)
-		target:stepOut()
+		target:stepOut(0)
 		check.eq(
 			waitUntil(function()
 				return stepsDone == 3
@@ -464,7 +464,7 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 			true
 		)
 		check.eq(target:getLine(), 11)
-		target:stepOver()
+		target:stepOver(0)
 		check.eq(
 			waitUntil(function()
 				return stepsDone == 4

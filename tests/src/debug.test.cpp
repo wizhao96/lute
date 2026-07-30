@@ -558,39 +558,39 @@ TEST_SUITE("Debug")
         REQUIRE(hitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
         // step in acts like step over when there's no function calls
         CHECK(target.getLine() == 9);
-        bool stepped = target.stepIn();
+        bool stepped = target.stepIn(0);
         CHECK(stepped);
         REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
         CHECK(target.getLine() == 10);
         stepPromise = std::promise<void>{};
         stepFuture = stepPromise.get_future();
         // step into function f
-        stepped = target.stepIn();
+        stepped = target.stepIn(0);
         CHECK(stepped);
         REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
         CHECK(target.getLine() == 2);
         stepPromise = std::promise<void>{};
         stepFuture = stepPromise.get_future();
         // this steps out of function to the next line in the caller
-        stepped = target.stepOut();
+        stepped = target.stepOut(0);
         CHECK(stepped);
         REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
         CHECK(target.getLine() == 11);
         stepPromise = std::promise<void>{};
         stepFuture = stepPromise.get_future();
         // this steps over a function
-        stepped = target.stepOver();
+        stepped = target.stepOver(0);
         CHECK(stepped);
         REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
         CHECK(target.getLine() == 12);
         stepPromise = std::promise<void>{};
         stepFuture = stepPromise.get_future();
         // this steps to the virtual last line
-        stepped = target.stepOver();
+        stepped = target.stepOver(0);
         CHECK(stepped);
         REQUIRE(stepFuture.wait_for(std::chrono::seconds(1)) == std::future_status::ready);
         CHECK(target.getLine() == 13);
-        target.stepOver();
+        target.stepOver(0);
 
         // check we are done
         REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);

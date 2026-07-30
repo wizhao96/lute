@@ -45,13 +45,6 @@ enum class StepType
     StepOut,
 };
 
-struct StepInfo
-{
-    StepType type;
-    int startLine;
-    int startDepth;
-};
-
 // Each Thread represents one coroutine in our Lute runtime.
 struct Thread
 {
@@ -60,6 +53,15 @@ struct Thread
     Thread() = default; // for unordered_map
     Thread(int id, std::string name);
     bool operator==(const Thread& other) const;
+};
+
+
+struct StepInfo
+{
+    Thread thread;
+    StepType type;
+    int startLine;
+    int startDepth;
 };
 
 struct StackFrame
@@ -158,10 +160,10 @@ struct Target
     bool launch(std::string sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
     bool continueProcess();
     bool pauseProcess();
-    bool step(StepType type);
-    bool stepIn();
-    bool stepOver();
-    bool stepOut();
+    bool step(int threadId, StepType type);
+    bool stepIn(int threadId);
+    bool stepOver(int threadId);
+    bool stepOut(int threadId);
 
 
     int getLine();
