@@ -3,13 +3,18 @@ local dapStream = require("./dapStream")
 local dapTypes = require("./dapTypes")
 local json = require("@std/json")
 
+local function createSource(sourcePath: string): dapTypes.Source
+	return {
+		path = sourcePath,
+		name = sourcePath:match("[^/\\]+$"),
+	}
+end
+
 local function debugToDapBreakpoint(breakpoint: debugger.Breakpoint): dapTypes.Breakpoint
 	local dapBreakpoint: dapTypes.Breakpoint = {
 		id = breakpoint.id,
 		verified = breakpoint.status == "installed",
-		source = {
-			path = breakpoint.sourcePath,
-		},
+		source = createSource(breakpoint.sourcePath),
 		line = breakpoint.line,
 	}
 	if breakpoint.status == "pendingInstall" then
@@ -90,6 +95,14 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				allThreadsStopped = true,
 			})
 		end,
+		onPrint = function(message: string, source: string, line: number)
+			ioSession.writeEvent("output", {
+				category = "stdout",
+				output = message,
+				source = createSource(source),
+				line = line,
+			})
+		end,
 	}
 	local configurationDone = false
 	local launchConfig: dapTypes.LaunchArgs? = nil
@@ -152,10 +165,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			local sources = target:getLoadedSources()
 			local dapSources = {}
 			for _, source in sources do
-				table.insert(dapSources, {
-					path = source,
-					name = source:match("[^/\\]+$"),
-				})
+				table.insert(dapSources, createSource(source))
 			end
 			ioSession.writeResponse(reqSeq, true, command, nil, {
 				sources = dapSources,

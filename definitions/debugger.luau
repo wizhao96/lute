@@ -83,6 +83,8 @@ export type LaunchConfig = {
 	onStepStop: ((thread: Thread, info: StepInfo) -> ())?,
 	--- called when print() would have printed out `message`
 	onPrint: ((message: string) -> ())?,
+	--- called when print() would have printed out `message` and is called from `source` on line number `line`
+	onPrint: ((message: string, source: string, line: number) -> ())?,
 }
 
 --- A `Target` represents the target program under the debugger.
