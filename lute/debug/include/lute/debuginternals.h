@@ -150,6 +150,7 @@ struct Target
     std::optional<Breakpoint> getBreakpointBySourceLine(std::string source, int line) const;
 
     // For inspection::
+    int getLine() const;
     std::vector<Thread> getThreads() const;
     std::optional<StackFrame> getStackFrame(int threadId, int level);
     std::optional<std::vector<StackFrame>> getStackTrace(int threadId, int startLevel = 0, int maximumLevel = 0);
@@ -165,9 +166,6 @@ struct Target
     bool stepIn(int threadId);
     bool stepOver(int threadId);
     bool stepOut(int threadId);
-
-
-    int getLine();
 
 private:
     // targetMutex protects the entire Target, since Target can be accessed from the main thread

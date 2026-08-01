@@ -322,7 +322,7 @@ std::vector<std::string> Target::getLoadedSources()
     return sources;
 }
 
-int Target::getLine()
+int Target::getLine() const
 {
     std::unique_lock lock(targetMutex);
     if (!launched || !paused)
