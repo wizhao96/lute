@@ -473,7 +473,7 @@ TEST_SUITE("Debug")
                     }
                 }
                 StackFrame frame = stacktrace->at(i);
-                CHECK(frame.id == i);
+                CHECK(frame.id == i + 1);
                 CHECK(frame.column == column);
                 CHECK(frame.line == line);
                 CHECK(frame.name == name);

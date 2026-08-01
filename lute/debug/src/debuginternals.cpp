@@ -970,6 +970,25 @@ std::optional<std::vector<Variable>> Target::getVariablesByScopeType(int frameId
     return getVariablesHelper(it->variableReference);
 }
 
+std::optional<Variable> Target::evaluateExpression(std::string expression, int frameId)
+{
+    std::unique_lock lock(targetMutex);
+    if (!paused)
+        return std::nullopt;
+    Luau::CompileOptions debugOptions;
+    debugOptions.optimizationLevel = 1;
+    debugOptions.debugLevel = 2;
+    std::string bytecode = Luau::compile("return " + expression, debugOptions);
+    lua_State* thread = lua_newthread(childRuntime->GL);
+    luaL_sandboxthread(thread);
+    // TODO: surface compilation errors to the user when debugging.
+    if (luau_load(thread, "eval", bytecode.c_str(), bytecode.size(), 0) != 0)
+    {
+        return std::nullopt;
+    }
+    return std::nullopt;
+}
+
 void Target::continueProcessHelper(bool isStepping)
 {
     if (stoppedThread)
@@ -999,7 +1018,7 @@ void Target::continueProcessHelper(bool isStepping)
     cb->interrupt = nullptr;
 
     // we clear the stack frame information
-    stackframeId = 0;
+    stackframeId = 1;
     stateToStackFrame.clear();
     idToStackFrameInfo.clear();
 

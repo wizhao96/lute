@@ -158,6 +158,9 @@ struct Target
     std::optional<std::vector<Variable>> getVariables(int varRef);
     std::optional<std::vector<Variable>> getVariablesByScopeType(int frameId, VariableScopeType contextType);
 
+    // For evaluation:
+    std::optional<Variable> evaluateExpression(std::string expression, int frameId);
+
     // For actively running scripts:
     bool launch(std::string sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
     bool continueProcess();
@@ -204,8 +207,8 @@ private:
     // stack frame information
     // note: stack frames are copies between these two data structures, not pointers. That's ok because the debugger
     // should never modify the stack frames themselves.
-    // stack frame ID information is reset upon every continue(). The base id resets to 0 as well.
-    int stackframeId = 0;
+    // stack frame ID information is reset upon every continue(). The base id resets to 1 as well.
+    int stackframeId = 1;
     std::unordered_map<int, std::unordered_map<int, StackFrame>> stateToStackFrame; // thread id -> level -> stackFrame
     std::unordered_map<int, std::pair<int, int>> idToStackFrameInfo;                // stack frame id -> stack frame's (thread id, level)
 
