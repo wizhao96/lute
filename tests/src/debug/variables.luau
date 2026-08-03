@@ -7,6 +7,7 @@ local _f = true
 
 local function g()
     local _k = a + _b
+    return _k
 end
 
 a += a

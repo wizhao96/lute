@@ -976,13 +976,10 @@ void Target::injectLocals(lua_State* L, int level, lua_State* eval, int evalTabl
     while (true)
     {
         name = lua_getlocal(L, level, n);
-        fprintf(stderr, "name %s", name);
         if (name == nullptr)
             break;
         lua_xmove(L, eval, 1);
-        fprintf(stderr, "name %s moved var", name);
         lua_setfield(eval, evalTableIndex, name);
-        fprintf(stderr, "name %s moved table", name);
         n++;
     }
     if (fixedSavedpc)
@@ -1021,30 +1018,23 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId = 
     std::unique_lock lock(targetMutex);
     if (!paused)
         return "target was not paused";
-    // this guard pops the new evalThread off the stack whenever we return
     Luau::CompileOptions debugOptions;
     debugOptions.optimizationLevel = 1;
     debugOptions.debugLevel = 2;
     std::string bytecode = Luau::compile("return " + expression, debugOptions);
-    fprintf(stderr, "hello 2");
     lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
     auto savedUserthread = cb->userthread;
     cb->userthread = nullptr;
     lua_State* evalThread = lua_newthread(childRuntime->GL);
     cb->userthread = savedUserthread;
-    StackGuard guard{evalThread};
+    StackGuard guard{childRuntime->GL};
     luaL_sandboxthread(evalThread);
-    if (luau_load(evalThread, "=eval", bytecode.c_str(), bytecode.size(), 0) != 0)
-    {
-        std::string error = lua_tostring(evalThread, -1);
-        return error;
-    }
+    // sets the previous global table is the top most scope of all variables
     lua_newtable(evalThread);
-    // transfer globals to __index of our new table
     lua_newtable(evalThread);
-    lua_getupvalue(evalThread, 1, 1);
-    lua_setfield(evalThread, 3, "__index");
-    lua_setmetatable(evalThread, 2);
+    lua_pushvalue(evalThread, LUA_GLOBALSINDEX);
+    lua_setfield(evalThread, 2, "__index");
+    lua_setmetatable(evalThread, 1);
     // inject locals + upvalues
     if (frameId != -1)
     {
@@ -1053,25 +1043,26 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId = 
         int depth = lua_stackdepth(thread);
         for (int i = depth - 1; i >= level; i--)
         {
-            injectUpvalues(thread, i, evalThread, 2);
-            fprintf(stderr, "hello 10");
-            injectLocals(thread, i, evalThread, 2);
-            fprintf(stderr, "hello 11");
+            injectUpvalues(thread, i, evalThread, 1);
+            injectLocals(thread, i, evalThread, 1);
         }
-        fprintf(stderr, "hello 9");
     }
-    lua_setupvalue(evalThread, 1, 1);
+    lua_replace(evalThread, LUA_GLOBALSINDEX);
+    if (luau_load(evalThread, "=eval", bytecode.c_str(), bytecode.size(), 0) != 0)
+    {
+        std::string error = lua_tostring(evalThread, -1);
+        return error;
+    }
     auto savedBreak = cb->debugbreak;
     cb->debugbreak = nullptr;
-    fprintf(stderr, "start");
     int status = lua_resume(evalThread, nullptr, 0);
-    fprintf(stderr, "stop");
     cb->debugbreak = savedBreak;
     if (status != LUA_OK)
     {
         const char* err = lua_tostring(evalThread, -1);
         return std::string(err ? err : "runtime error");
     }
+    fprintf(stderr, "okk");
     return makeVariable(evalThread, expression);
 }
 
