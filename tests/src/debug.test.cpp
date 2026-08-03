@@ -613,4 +613,27 @@ TEST_SUITE("Debug")
         // check we are done
         REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
     }
+    TEST_CASE_FIXTURE(DebugFixture, "Debug_evalExpression")
+    {
+        std::string fixturePath = getDebugFixturePath("variables.luau");
+        Target target(*runtime);
+        target.setBreakpoint(fixturePath, 10);
+
+        std::vector<Variable> capturedLocals;
+        config.onBreakpointHit = [&](const Thread&, const Breakpoint&)
+        {
+            const std::vector<Thread>& threads = target.getThreads();
+            REQUIRE(threads.size() == 1);
+            std::optional<std::vector<StackFrame>> stackframe = target.getStackTrace(threads.at(0).id);
+            REQUIRE(stackframe.has_value());
+            EvaluateResult result = target.evaluateExpression("2", stackframe->at(0).id);
+            REQUIRE(std::holds_alternative<Variable>(result));
+            Variable var = std::get<Variable>(result);
+            CHECK(var.value == "2");
+            CHECK(var.type == "number");
+            target.continueProcess();
+        };
+        target.launch(fixturePath, {}, config);
+        REQUIRE(exitFuture.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+    };
 }

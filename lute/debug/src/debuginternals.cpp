@@ -714,7 +714,6 @@ static std::string convertNumberToString(lua_State* L, int stackSlot)
     return buf;
 }
 
-// We assume that the value is at position -1 on the stack and the key is at position -2.
 static std::string getKeyFromTableType(lua_State* L)
 {
     std::string key;
@@ -741,7 +740,6 @@ static std::string getKeyFromTableType(lua_State* L)
     return key;
 }
 
-// Gets all variables from a table at index idx of the stack
 static std::string printTable(lua_State* L, int idx, int levelsToPrint)
 {
     if (levelsToPrint <= 0)
@@ -797,7 +795,6 @@ static std::string printTable(lua_State* L, int idx, int levelsToPrint)
     return result + "}";
 }
 
-// Turns the object on the top of the stack into a variable object.
 Variable Target::makeVariable(lua_State* L, const std::string& name)
 {
     Variable var;
@@ -834,8 +831,6 @@ Variable Target::makeVariable(lua_State* L, const std::string& name)
     return var;
 }
 
-// Gets all local variables of a lua_State* and its frame at a certain level, given that
-// such a frame exists.
 std::vector<Variable> Target::getLocalsHelper(lua_State* L, int level)
 {
     // when hitting a bp we try to re-enter
@@ -863,8 +858,6 @@ std::vector<Variable> Target::getLocalsHelper(lua_State* L, int level)
     return vars;
 }
 
-// Gets all upvalues of a lua_State* and it stack frame ata certain level, given
-// that such a frame exists
 std::vector<Variable> Target::getUpvaluesHelper(lua_State* L, int level)
 {
     std::vector<Variable> vars;
@@ -886,7 +879,6 @@ std::vector<Variable> Target::getUpvaluesHelper(lua_State* L, int level)
     return vars;
 }
 
-// Gets all variables from a table at index idx of the stack
 std::vector<Variable> Target::getTableHelper(lua_State* L, int idx)
 {
     std::vector<Variable> vars;
@@ -970,23 +962,117 @@ std::optional<std::vector<Variable>> Target::getVariablesByScopeType(int frameId
     return getVariablesHelper(it->variableReference);
 }
 
-std::optional<Variable> Target::evaluateExpression(std::string expression, int frameId)
+void Target::injectLocals(lua_State* L, int level, lua_State* eval, int evalTableIndex)
 {
+    bool fixedSavedpc = false;
+    const Instruction* original = L->ci->savedpc;
+    if (level == 0 && L == stoppedThread && L->ci)
+    {
+        L->ci->savedpc = stoppedPc;
+        fixedSavedpc = true;
+    }
+    const char* name;
+    int n = 1;
+    while (true)
+    {
+        name = lua_getlocal(L, level, n);
+        fprintf(stderr, "name %s", name);
+        if (name == nullptr)
+            break;
+        lua_xmove(L, eval, 1);
+        fprintf(stderr, "name %s moved var", name);
+        lua_setfield(eval, evalTableIndex, name);
+        fprintf(stderr, "name %s moved table", name);
+        n++;
+    }
+    if (fixedSavedpc)
+        L->ci->savedpc = original;
+}
+
+
+void Target::injectUpvalues(lua_State* L, int level, lua_State* eval, int evalTableIndex)
+{
+    lua_Debug ar = {};
+    lua_getinfo(L, level, "f", &ar);
+    int n = 1;
+    const char* name;
+    while (true)
+    {
+        name = lua_getupvalue(L, -1, n);
+        if (name == nullptr)
+            break;
+        lua_xmove(L, eval, 1);
+        lua_setfield(eval, evalTableIndex, name);
+        n++;
+    }
+    lua_pop(L, 1);
+}
+
+EvaluateResult Target::evaluateExpression(std::string expression, int frameId = -1)
+{
+    struct StackGuard
+    {
+        lua_State* L;
+        ~StackGuard()
+        {
+            lua_pop(L, 1);
+        }
+    };
     std::unique_lock lock(targetMutex);
     if (!paused)
-        return std::nullopt;
+        return "target was not paused";
+    // this guard pops the new evalThread off the stack whenever we return
     Luau::CompileOptions debugOptions;
     debugOptions.optimizationLevel = 1;
     debugOptions.debugLevel = 2;
     std::string bytecode = Luau::compile("return " + expression, debugOptions);
-    lua_State* thread = lua_newthread(childRuntime->GL);
-    luaL_sandboxthread(thread);
-    // TODO: surface compilation errors to the user when debugging.
-    if (luau_load(thread, "eval", bytecode.c_str(), bytecode.size(), 0) != 0)
+    fprintf(stderr, "hello 2");
+    lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
+    auto savedUserthread = cb->userthread;
+    cb->userthread = nullptr;
+    lua_State* evalThread = lua_newthread(childRuntime->GL);
+    cb->userthread = savedUserthread;
+    StackGuard guard{evalThread};
+    luaL_sandboxthread(evalThread);
+    if (luau_load(evalThread, "=eval", bytecode.c_str(), bytecode.size(), 0) != 0)
     {
-        return std::nullopt;
+        std::string error = lua_tostring(evalThread, -1);
+        return error;
     }
-    return std::nullopt;
+    lua_newtable(evalThread);
+    // transfer globals to __index of our new table
+    lua_newtable(evalThread);
+    lua_getupvalue(evalThread, 1, 1);
+    lua_setfield(evalThread, 3, "__index");
+    lua_setmetatable(evalThread, 2);
+    // inject locals + upvalues
+    if (frameId != -1)
+    {
+        auto [threadId, level] = idToStackFrameInfo.at(frameId);
+        lua_State* thread = threadIdToState.at(threadId);
+        int depth = lua_stackdepth(thread);
+        for (int i = depth - 1; i >= level; i--)
+        {
+            injectUpvalues(thread, i, evalThread, 2);
+            fprintf(stderr, "hello 10");
+            injectLocals(thread, i, evalThread, 2);
+            fprintf(stderr, "hello 11");
+        }
+        fprintf(stderr, "hello 9");
+    }
+    lua_setupvalue(evalThread, 1, 1);
+    auto savedBreak = cb->debugbreak;
+    cb->debugbreak = nullptr;
+    fprintf(stderr, "start");
+    int status = lua_resume(evalThread, nullptr, 0);
+    fprintf(stderr, "stop");
+    cb->debugbreak = savedBreak;
+    if (status != LUA_OK)
+    {
+        const char* err = lua_tostring(evalThread, -1);
+        return std::string(err ? err : "runtime error");
+    }
+    return makeVariable(evalThread, expression);
 }
 
 void Target::continueProcessHelper(bool isStepping)

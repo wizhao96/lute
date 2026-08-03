@@ -110,6 +110,8 @@ struct Variable
     int variableReference = 0;
 };
 
+using EvaluateResult = std::variant<Variable, std::string>;
+
 struct LaunchConfig
 {
     // onBreakpointInstall is called whenever an installation attempt is actually made, regardless
@@ -159,7 +161,7 @@ struct Target
     std::optional<std::vector<Variable>> getVariablesByScopeType(int frameId, VariableScopeType contextType);
 
     // For evaluation:
-    std::optional<Variable> evaluateExpression(std::string expression, int frameId);
+    EvaluateResult evaluateExpression(std::string expression, int frameId);
 
     // For actively running scripts:
     bool launch(std::string sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
@@ -240,6 +242,9 @@ private:
     std::vector<Variable> getLocalsHelper(lua_State* L, int level);
     std::vector<Variable> getUpvaluesHelper(lua_State* L, int level);
     std::vector<Variable> getTableHelper(lua_State* L, int idx);
+
+    void injectLocals(lua_State* L, int level, lua_State* eval, int evalTableIndex);
+    void injectUpvalues(lua_State* L, int level, lua_State* eval, int evalTableIndex);
 
     std::optional<std::vector<VariableScope>> getScopesHelper(int threadId, int level);
     std::optional<std::vector<Variable>> getVariablesHelper(int varRef);
