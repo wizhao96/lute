@@ -622,7 +622,6 @@ static int target_getVariables(lua_State* L)
     return 1;
 }
 
-
 static int target_getVariablesByScopeType(lua_State* L)
 {
     auto target = getTarget(L, 1);
@@ -643,6 +642,23 @@ static int target_getVariablesByScopeType(lua_State* L)
         pushVariable(L, variables->at(i));
         lua_rawseti(L, -2, i + 1);
     }
+    return 1;
+}
+
+static int target_evaluateExpression(lua_State* L)
+{
+    auto target = getTarget(L, 1);
+    std::string expression = luaL_checkstring(L, 2);
+    int frameId = (int)luaL_optinteger(L, 3, -1);
+    EvaluateResult result = target->evaluateExpression(expression, frameId);
+    if (std::holds_alternative<Variable>(result))
+    {
+        Variable var = std::get<Variable>(result);
+        return pushVariable(L, var);
+    }
+    std::string err = std::get<std::string>(result);
+    lua_checkstack(L, 1);
+    lua_pushstring(L, err.c_str());
     return 1;
 }
 
@@ -678,6 +694,7 @@ static const std::unordered_map<std::string, lua_CFunction> kTargetMethods = {
     {"stepOut", debug::target_stepOut},
     {"stepOver", debug::target_stepOver},
     {"getLine", debug::target_getLine},
+    {"evaluateExpression", debug::target_evaluateExpression},
 };
 
 static void initializeTarget(lua_State* L)

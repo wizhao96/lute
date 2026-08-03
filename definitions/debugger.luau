@@ -133,6 +133,10 @@ export type Target = {
 	--- Gets a set of variables belonging on the stack frame with id `frameID` with a certain scopeType.
 	--- Return `nil` if script is running or if such variables can not be found.
 	getVariablesByScopeType: (self: Target, frameId: number, sourceType: VariableScopeType) -> { Variable }?,
+	--- Evaluates an expression within the scope of a given stack frame id. 
+	--- If `frameId` is -1, evaluate in the global scope.
+	--- Returns a `Variable` if expression could be evaluated or an error string if not.
+	evaluateExpression: (self: Target, expression: string, frameId: number) -> Variable | string,
 	--- Steps into the next line of the code on `threadId`, including into a function if the line contains a function.
 	--- Returns `true` if target was paused before stepping and `false` otherwise.
 	step: (self: Target, threadId: number, type: StepType) -> boolean,

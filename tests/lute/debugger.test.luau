@@ -5,6 +5,10 @@ local debug = require("@lute/debugger")
 local path = require("@std/path")
 local proc = require("@std/process")
 
+local function normalizePath(p: string): string
+	return (p:gsub("\\", "/"))
+end
+
 -- a helper function that basically polls a boolean, since Luau does
 -- not allow the promises/futures we use in the C++ tests
 local function waitUntil(condition: () -> boolean, timeout: number?, pollInterval: number?): boolean
@@ -315,7 +319,7 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 				assert(stacktrace)
 				check.eq(#stacktrace, hits + 1)
 				for i, frame in stacktrace do
-					check.eq(frame.id, i - 1)
+					check.eq(frame.id, i)
 					check.eq(frame.column, 0)
 					check.eq(frame.sourcePath, mainPath)
 					if i == #stacktrace then
@@ -360,8 +364,8 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 				local scopes = target:getScopes(stacktrace[1].id)
 				assert(scopes)
 				check.eq(#scopes, 2)
-				checkScope(check, scopes, "Locals", "locals", threads[1].id, stacktrace[1].id)
-				checkScope(check, scopes, "Upvalues", "upvalues", threads[1].id, stacktrace[1].id)
+				checkScope(check, scopes, "Locals", "locals", threads[1].id, 0)
+				checkScope(check, scopes, "Upvalues", "upvalues", threads[1].id, 0)
 				for _, scope in scopes do
 					if scope.type == "locals" then
 						local locals = target:getVariables(scope.variableRef)
@@ -510,5 +514,48 @@ test.suite("LuteDebugLibrarySuite", function(suite)
 		check.eq(prints[1].line, 5)
 		check.eq(prints[2].msg, "custom_value\n")
 		check.eq(prints[2].line, 6)
+	end)
+	-- this test case focuses on evaluating expressions
+	suite:case("evaluateExpressions", function(check)
+		local target = debug.newTarget()
+		check.eq(typeof(target), "Target")
+		local mainPath = path.format(path.join(proc.cwd(), "tests/src/debug/variables.luau"))
+		target:setBreakpoint(mainPath, 10)
+		local onFinished = false
+		local targetLaunched = target:launch(mainPath, {}, {
+			onBreakpointHit = function(thread, bp)
+				local threads = target:getThreads()
+				check.eq(#threads, 1)
+				local stacktrace = target:getStackTrace(threads[1].id)
+				assert(stacktrace)
+				check.eq(#stacktrace, 2)
+				local result = target:evaluateExpression("2*_k", stacktrace[1].id)
+				assert(type(result) ~= "string")
+				local variable = result :: debug.Variable
+				check.eq(variable.value, "50.4")
+				result = target:evaluateExpression("_e[4]", stacktrace[1].id)
+				assert(type(result) ~= "string")
+				variable = result :: debug.Variable
+				check.eq(variable.value, "{r=13}")
+				result = target:evaluateExpression("a +", stacktrace[1].id)
+				assert(type(result) == "string")
+				local error = result :: string
+				check.eq(error, "eval:1: Expected identifier when parsing expression, got <eof>")
+				local continued = target:continueProcess()
+				check.that(continued)
+			end,
+			onExit = function(status)
+				if status then
+					onFinished = true
+				end
+			end,
+		})
+		check.that(targetLaunched)
+		check.eq(
+			waitUntil(function()
+				return onFinished
+			end),
+			true
+		)
 	end)
 end)

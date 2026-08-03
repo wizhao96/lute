@@ -1062,7 +1062,6 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId = 
         const char* err = lua_tostring(evalThread, -1);
         return std::string(err ? err : "runtime error");
     }
-    fprintf(stderr, "okk");
     return makeVariable(evalThread, expression);
 }
 
