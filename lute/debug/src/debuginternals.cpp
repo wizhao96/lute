@@ -1,6 +1,7 @@
 #include "lute/debuginternals.h"
 
 #include "lute/common.h"
+#include "lute/ref.h"
 #include "lute/require.h"
 #include "lute/requirevfs.h"
 
@@ -83,6 +84,8 @@ Target::~Target()
     // We want to stop the runtime so nothing runs while we are destroying the target but first
     // we need to clear all sources (which are stored as refs in the runtime).
     loadedSources.clear();
+    stoppedThreadRef = nullptr;
+    scriptThreadRef = nullptr;
     childRuntime.reset();
 }
 
@@ -413,6 +416,7 @@ bool Target::launch(std::string sourcePath, const std::vector<std::string>& args
 
         // thread initialization
         scriptThread = thread;
+        scriptThreadRef = getRefForThread(thread);
         threadIdToState[threadId] = thread;
         stateToThread[thread] = Thread(threadId, "Thread " + std::to_string(threadId));
         threadId++;
@@ -470,6 +474,7 @@ void Target::installBpHitCallback()
             target->paused = true;
             target->childRuntime->stopDebug();
             target->stoppedThread = L;
+            target->stoppedThreadRef = getRefForThread(L);
             // Clear out stepping when this happens.
             lua_callbacks(L)->debugstep = nullptr;
             lua_break(L);
@@ -990,7 +995,8 @@ void Target::injectLocals(lua_State* L, int level, lua_State* eval, int evalTabl
 void Target::injectUpvalues(lua_State* L, int level, lua_State* eval, int evalTableIndex)
 {
     lua_Debug ar = {};
-    lua_getinfo(L, level, "f", &ar);
+    if (lua_getinfo(L, level, "f", &ar) == 0)
+        return;
     int n = 1;
     const char* name;
     while (true)
@@ -1015,6 +1021,21 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId = 
             lua_pop(L, 1);
         }
     };
+    struct CallbackGuard
+    {
+        lua_Callbacks* cb;
+        decltype(cb->userthread) saved;
+        CallbackGuard(lua_Callbacks* cb)
+            : cb(cb)
+            , saved(cb->userthread)
+        {
+            cb->userthread = nullptr;
+        }
+        ~CallbackGuard()
+        {
+            cb->userthread = saved;
+        }
+    };
     std::unique_lock lock(targetMutex);
     if (!paused)
         return "target was not paused";
@@ -1023,11 +1044,9 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId = 
     debugOptions.debugLevel = 2;
     std::string bytecode = Luau::compile("return " + expression, debugOptions);
     lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
-    auto savedUserthread = cb->userthread;
-    cb->userthread = nullptr;
+    CallbackGuard callbackGuard(cb);
     lua_State* evalThread = lua_newthread(childRuntime->GL);
-    cb->userthread = savedUserthread;
-    StackGuard guard{childRuntime->GL};
+    StackGuard stackGuard{childRuntime->GL};
     luaL_sandboxthread(evalThread);
     // sets the previous global table is the top most scope of all variables
     lua_newtable(evalThread);
@@ -1062,6 +1081,8 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId = 
         const char* err = lua_tostring(evalThread, -1);
         return std::string(err ? err : "runtime error");
     }
+    if (lua_gettop(evalThread) == 0)
+        return Variable{expression, "(no value)", "void"};
     return makeVariable(evalThread, expression);
 }
 
@@ -1086,7 +1107,10 @@ void Target::continueProcessHelper(bool isStepping)
         // runToCompletion() has not exited.
         childRuntime->schedule([]() {});
         if (!isStepping)
+        {
             stoppedThread = nullptr;
+            stoppedThreadRef = nullptr;
+        }
     }
     // this clears the interrupts that triggers when the process is paused from client request
     // in case it has not actually been triggered.
@@ -1136,6 +1160,7 @@ bool Target::pauseProcess()
         target->paused = true;
         target->childRuntime->stopDebug();
         target->stoppedThread = L;
+        target->stoppedThreadRef = getRefForThread(L);
         // We transition into a paused state. Let's modify all pending breakpoints.
         auto [installed, uninstalled] = target->modifyPendingBreakpoints(target->scriptThread);
         target->computeStoppedLine(L);
@@ -1217,6 +1242,7 @@ bool Target::step(int threadId, StepType type)
             target->paused = true;
             target->childRuntime->stopDebug();
             target->stoppedThread = L;
+            target->stoppedThreadRef = getRefForThread(L);
             target->stoppedLine = ar->currentline;
             target->stoppedPc = L->ci->savedpc;
             target->stepInfo = std::nullopt;

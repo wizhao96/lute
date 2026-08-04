@@ -193,8 +193,12 @@ private:
 
     // thread for our launched script
     lua_State* scriptThread = nullptr;
+    std::shared_ptr<Ref> scriptThreadRef;
+
     // our stopped thread that we need to requeue when we continue
     lua_State* stoppedThread = nullptr;
+    std::shared_ptr<Ref> stoppedThreadRef;
+
     // our stopped line/instruction if we hit a breakpoint. we need to store this because
     // when we hit a breakpoint, the VM eventually resets the PC back one to support hitting
     // the breakpoint again. this messes up lua_getinfo() calls, so we store it directly.

@@ -118,6 +118,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				supportsTerminateRequest = true,
 				supportsLoadedSourcesRequest = true,
 				supportsVariableType = true,
+				supportsEvaluateForHovers = true,
 			}
 			ioSession.writeResponse(reqSeq, true, command, nil, capabilities, nil, capabilities)
 			ioSession.writeEvent("initialized")
@@ -240,7 +241,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 					variablesReference = scope.variableRef,
 				}
 				if scope.type == "locals" then
-					dapScopeItem.presentationHint = 'locals'
+					dapScopeItem.presentationHint = "locals"
 				end
 				table.insert(dapScope, dapScopeItem)
 			end
@@ -269,6 +270,21 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			ioSession.writeResponse(reqSeq, true, command, nil, {
 				variables = dapVars,
 			})
+		elseif command == "evaluate" then
+			local args = request.arguments :: json.Object
+			local expression = args.expression :: string
+			local frameId = if args.frameId ~= nil then args.frameId :: number else -1
+			local result = target:evaluateExpression(expression, frameId)
+			if type(result) == "string" then
+				ioSession.writeResponse(reqSeq, false, command, result)
+			else
+				local variable = result :: debugger.Variable
+				ioSession.writeResponse(reqSeq, true, command, nil, {
+					result = variable.value,
+					type = variable.type,
+					variablesReference = variable.variableRef,
+				})
+			end
 		elseif command == "terminate" or command == "disconnect" then
 			ioSession.writeResponse(reqSeq, true, command)
 			ioSession.writeEvent("terminated")
