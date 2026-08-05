@@ -33,7 +33,7 @@ Breakpoint::Breakpoint(int id, std::string sourcePath, int line, BreakpointConfi
     , sourcePath(sourcePath)
     , line(line)
     , condition(config.condition)
-    , hitCondition(config.condition)
+    , hitCondition(config.hitCondition)
     , logMessage(config.logMessage)
     , status(status)
 {
@@ -455,12 +455,18 @@ std::string convertHitConditionToExpression(int hitCount, std::string hitExpress
     if (start == std::string::npos)
         return "true";
     hitExpression = hitExpression.substr(start);
+    size_t end = hitExpression.find_last_not_of(" \t");
+    hitExpression = hitExpression.substr(0, end + 1);
     std::string hitString = std::to_string(hitCount);
-    if (hitExpression[0] == '%')
-        return hitString + " % " + hitExpression.substr(1) + " == 0";
-    if (hitExpression[0] == '>' || hitExpression[0] == '<' || hitExpression[0] == '=' || hitExpression[0] == '~')
-        return hitString + " " + hitExpression;
-    return hitString + " == " + hitExpression;
+    if (std::all_of(hitExpression.begin(), hitExpression.end(), ::isdigit))
+        return hitString + " == " + hitExpression;
+    if (hitExpression.size() > 0 && hitExpression[0] == '%')
+    {
+        hitExpression = hitExpression.substr(hitExpression.find_first_not_of(" \t", 1));
+        if (std::all_of(hitExpression.begin() + 1, hitExpression.end(), ::isdigit))
+            return hitString + "%" + hitExpression + " == 0";
+    }
+    return hitString + hitExpression;
 }
 
 bool Target::evaluateBpCondition(lua_State* L, const Breakpoint& bp)
@@ -486,7 +492,7 @@ bool Target::evaluateBpHitCondition(lua_State* L, const Breakpoint& bp)
         parentRuntime.reporter.reportError(
             Luau::format(
                 "cannot evaluate breakpoint hit condition %s with %d hits at line %d in %s",
-                bp.condition.c_str(),
+                bp.hitCondition.c_str(),
                 bp.hitCount,
                 bp.line,
                 bp.sourcePath.c_str()
@@ -521,7 +527,7 @@ std::string Target::evaluateLogMessage(lua_State* L, const Breakpoint& bp)
         Variable var = std::get<Variable>(result);
         logMessage.replace(start, end - start + 1, var.value);
     }
-    return logMessage;
+    return logMessage + '\n';
 }
 
 void Target::installBpHitCallback()
@@ -552,7 +558,8 @@ void Target::installBpHitCallback()
         // Only stop execution on installed breakpoints; otherwise, don't stop.
         if (bp && bp->status == BreakpointStatus::Installed)
         {
-            bp->hitCount++;
+            target->breakpoints.at(bp->id).hitCount++;
+            bp->hitCount = target->breakpoints.at(bp->id).hitCount;
             if (bp->condition != "" && !target->evaluateBpCondition(L, *bp))
             {
                 return;
@@ -565,7 +572,7 @@ void Target::installBpHitCallback()
             {
                 lock.unlock();
                 std::string message = target->evaluateLogMessage(L, *bp);
-                if(target->launchConfig.onLogpointHit)
+                if (target->launchConfig.onLogpointHit)
                     target->launchConfig.onLogpointHit(message, getSourceFromChunk(chunkname), line);
                 return;
             }
