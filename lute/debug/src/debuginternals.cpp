@@ -553,6 +553,7 @@ void Target::installThreadCallback()
         // this means a thread is being garbage collected
         if (LP == nullptr)
         {
+            // we can have unregistered threads such as eval threads that still get GC'ed.
             if (auto it = target->stateToThread.find(L); it != target->stateToThread.end())
             {
                 int id = it->second.id;
@@ -565,10 +566,6 @@ void Target::installThreadCallback()
                 {
                     target->parentRuntime.reporter.reportError(Luau::format("userthread callback fired for unregistered thread id %d", id));
                 }
-            }
-            else
-            {
-                target->parentRuntime.reporter.reportError(Luau::format("userthread callback fired for unregistered lua_State* %p", (void*)L));
             }
         }
         else
@@ -1021,19 +1018,27 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
             lua_pop(L, 1);
         }
     };
+    // we 1) don't want to register the eval thread to stop re-entrancy on the mutex (and to not have floating threads on the screen)
+    // and consequently 2) don't want to run gc during evaluation
     struct CallbackGuard
     {
+        lua_State* global;
         lua_Callbacks* cb;
-        decltype(cb->userthread) saved;
-        CallbackGuard(lua_Callbacks* cb)
-            : cb(cb)
-            , saved(cb->userthread)
+        decltype(cb->userthread) savedUserthread;
+
+        explicit CallbackGuard(lua_State* global, lua_Callbacks* cb)
+            : global(global)
+            , cb(cb)
+            , savedUserthread(cb->userthread)
         {
+            lua_gc(global, LUA_GCSTOP, 0);
             cb->userthread = nullptr;
         }
+
         ~CallbackGuard()
         {
-            cb->userthread = saved;
+            cb->userthread = savedUserthread;
+            lua_gc(global, LUA_GCRESTART, 0);
         }
     };
     std::unique_lock lock(targetMutex);
@@ -1044,7 +1049,7 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
     debugOptions.debugLevel = 2;
     std::string bytecode = Luau::compile("return " + expression, debugOptions);
     lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
-    CallbackGuard callbackGuard(cb);
+    CallbackGuard callbackGuard(childRuntime->GL, cb);
     lua_State* evalThread = lua_newthread(childRuntime->GL);
     StackGuard stackGuard{childRuntime->GL};
     luaL_sandboxthread(evalThread);
@@ -1067,6 +1072,7 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
         }
     }
     lua_replace(evalThread, LUA_GLOBALSINDEX);
+    fprintf(stderr, "hello");
     if (luau_load(evalThread, "=eval", bytecode.c_str(), bytecode.size(), 0) != 0)
     {
         std::string error = lua_tostring(evalThread, -1);
@@ -1074,7 +1080,9 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
     }
     auto savedBreak = cb->debugbreak;
     cb->debugbreak = nullptr;
+    fprintf(stderr, "starteval");
     int status = lua_resume(evalThread, nullptr, 0);
+    fprintf(stderr, "stopeval");
     cb->debugbreak = savedBreak;
     if (status != LUA_OK)
     {
