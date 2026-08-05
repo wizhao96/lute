@@ -427,7 +427,7 @@ static std::function<void(const debug::Breakpoint&)> makeBreakpointCallback(std:
 //     onExit(bool success) -> ()
 //     onPause(Thread thread) -> ()
 //     onPrint(string message, string source, int line) -> ()
-//     onLogPointHit(string message, string source, int line) -> ()
+//     onLogPointHit(string message, Breakpoint bp) -> ()
 // }
 // returns boolean
 static int target_launch(lua_State* L)
@@ -540,6 +540,7 @@ static int target_launch(lua_State* L)
                     [message, bp](lua_State* L)
                     {
                         checkStack(L, 2);
+                        lua_pushstring(L, message.c_str());
                         pushBreakpoint(L, bp);
                         return 2;
                     }

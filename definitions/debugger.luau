@@ -5,6 +5,14 @@ local debugger = {}
 --- operation is queued to happen when the script is next paused.
 export type BreakpointStatus = "pendingInstall" | "pendingUninstall" | "installed" | "invalid"
 
+
+--- additional options for a breakpoint
+export type BreakpointConfig = {
+	condition: string?,
+	hitCondition: string?,
+	logMessage: string?,
+}
+
 --- A breakpoint that stops execution when encountered during runtime
 --- if condition is not "", the condition must evaluate to true before stopping.
 --- if hitCondition is not "", a condition involving the hitCount must be true before stopping.
@@ -98,7 +106,7 @@ export type LaunchConfig = {
 export type Target = {
 	--- Sets a breakpoint at `sourcePath` with a given line and queue it for installation.
 	--- If this bp already existed return the preexisting breakpoint. Otherwise, it returns the new one.
-	setBreakpoint: (self: Target, sourcePath: string, line: number) -> Breakpoint,
+	setBreakpoint: (self: Target, sourcePath: string, line: number, config: BreakpointConfig?) -> Breakpoint,
 	--- Remove a breakpoint with a given `id` and queue for uninstall.
 	--- Returns whether it was successful or not.
 	removeBreakpoint: (self: Target, id: number) -> boolean,
