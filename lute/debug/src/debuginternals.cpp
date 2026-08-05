@@ -573,7 +573,7 @@ void Target::installBpHitCallback()
                 lock.unlock();
                 std::string message = target->evaluateLogMessage(L, *bp);
                 if (target->launchConfig.onLogpointHit)
-                    target->launchConfig.onLogpointHit(message, getSourceFromChunk(chunkname), line);
+                    target->launchConfig.onLogpointHit(message, bp.value());
                 return;
             }
             target->bpHit = *bp;

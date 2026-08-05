@@ -695,11 +695,11 @@ TEST_SUITE("Debug")
         Breakpoint hitConditionBp = target.setBreakpoint(fixturePath, 8, hitCondition);
         Breakpoint logpoints = target.setBreakpoint(fixturePath, 4, log);
         std::vector<std::string> logs;
-        config.onLogpointHit = [&](std::string message, std::string source, int line)
+        config.onLogpointHit = [&](std::string message, const Breakpoint& bpHit)
         {
             logs.push_back(message);
-            CHECK(source == fixturePath);
-            CHECK(line == 4);
+            CHECK(bpHit.sourcePath == fixturePath);
+            CHECK(bpHit.line == 4);
         };
         int hits = 0, conditionalStops = 0, hitConditionStops = 0;
         config.onBreakpointHit = [&](const Thread&, const Breakpoint& bpHit)

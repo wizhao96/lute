@@ -6,10 +6,17 @@ local debugger = {}
 export type BreakpointStatus = "pendingInstall" | "pendingUninstall" | "installed" | "invalid"
 
 --- A breakpoint that stops execution when encountered during runtime
+--- if condition is not "", the condition must evaluate to true before stopping.
+--- if hitCondition is not "", a condition involving the hitCount must be true before stopping.
+--- if logMessage is not "", then instead of stopping we simply output an interpolated log message to the relevant callback.
 export type Breakpoint = {
 	id: number,
 	line: number,
 	sourcePath: string,
+	condition: string,
+	hitCondition: string,
+	hitCount: number,
+	logMessage: string,
 	status: BreakpointStatus,
 }
 
@@ -81,10 +88,10 @@ export type LaunchConfig = {
 	onPause: ((thread: Thread) -> ())?,
 	--- called when our script finishes stepping on `thread`. `info` reflects the information about our stepping command.
 	onStepStop: ((thread: Thread, info: StepInfo) -> ())?,
-	--- called when print() would have printed out `message`
-	onPrint: ((message: string) -> ())?,
 	--- called when print() would have printed out `message` and is called from `source` on line number `line`
 	onPrint: ((message: string, source: string, line: number) -> ())?,
+	--- called when we hit a log point at `source` on line number `line`
+	onLogpointHit: ((message: string, bp: Breakpoint) -> ())?,
 }
 
 --- A `Target` represents the target program under the debugger.
