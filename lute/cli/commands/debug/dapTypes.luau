@@ -13,6 +13,9 @@ export type Source = {
 
 export type SourceBreakpoint = {
 	line: number,
+	condition: string?,
+	hitCondition: string?,
+	logMessage: string?,
 }
 
 export type SetBreakpointsArgs = {
@@ -25,7 +28,7 @@ export type Breakpoint = {
 	verified: boolean,
 	source: Source?,
 	reason: ("pending" | "failed")?,
-	line: number?,
+	line: number?
 }
 
 export type LaunchArgs = {

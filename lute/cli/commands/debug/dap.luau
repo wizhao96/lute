@@ -40,7 +40,14 @@ local function clearAndSetBreakpoints(
 	local requestedBps = {}
 	if newBreakpoints then
 		for _, setBp in newBreakpoints do
-			table.insert(requestedBps, debugToDapBreakpoint(target:setBreakpoint(sourcePath, setBp.line)))
+			table.insert(
+				requestedBps,
+				debugToDapBreakpoint(target:setBreakpoint(sourcePath, setBp.line, {
+					condition = setBp.condition,
+					hitCondition = setBp.hitCondition,
+					logMessage = setBp.logMessage,
+				}))
+			)
 		end
 	end
 	return requestedBps
@@ -103,6 +110,14 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				line = line,
 			})
 		end,
+		onLogpointHit = function(message: string, breakpoint: debugger.Breakpoint)
+			ioSession.writeEvent("output", {
+				category = "stdout",
+				output = message,
+				source = createSource(breakpoint.sourcePath),
+				line = breakpoint.line,
+			})
+		end,
 	}
 	local configurationDone = false
 	local launchConfig: dapTypes.LaunchArgs? = nil
@@ -119,6 +134,9 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				supportsLoadedSourcesRequest = true,
 				supportsVariableType = true,
 				supportsEvaluateForHovers = true,
+				supportsConditionalBreakpoints = true,
+				supportsHitConditionalBreakpoints = true,
+				supportsLogPoints = true,
 			}
 			ioSession.writeResponse(reqSeq, true, command, nil, capabilities, nil, capabilities)
 			ioSession.writeEvent("initialized")
