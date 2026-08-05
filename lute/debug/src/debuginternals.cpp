@@ -1025,16 +1025,14 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
         lua_State* global;
         lua_Callbacks* cb;
         decltype(cb->userthread) savedUserthread;
-
-        explicit CallbackGuard(lua_State* global, lua_Callbacks* cb)
+        explicit CallbackGuard(lua_State* global)
             : global(global)
-            , cb(cb)
+            , cb(lua_callbacks(global))
             , savedUserthread(cb->userthread)
         {
             lua_gc(global, LUA_GCSTOP, 0);
             cb->userthread = nullptr;
         }
-
         ~CallbackGuard()
         {
             cb->userthread = savedUserthread;
@@ -1048,8 +1046,7 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
     debugOptions.optimizationLevel = 1;
     debugOptions.debugLevel = 2;
     std::string bytecode = Luau::compile("return " + expression, debugOptions);
-    lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
-    CallbackGuard callbackGuard(childRuntime->GL, cb);
+    CallbackGuard callbackGuard(childRuntime->GL);
     lua_State* evalThread = lua_newthread(childRuntime->GL);
     StackGuard stackGuard{childRuntime->GL};
     luaL_sandboxthread(evalThread);
@@ -1072,17 +1069,15 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
         }
     }
     lua_replace(evalThread, LUA_GLOBALSINDEX);
-    fprintf(stderr, "hello");
     if (luau_load(evalThread, "=eval", bytecode.c_str(), bytecode.size(), 0) != 0)
     {
         std::string error = lua_tostring(evalThread, -1);
         return error;
     }
+    lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
     auto savedBreak = cb->debugbreak;
     cb->debugbreak = nullptr;
-    fprintf(stderr, "starteval");
     int status = lua_resume(evalThread, nullptr, 0);
-    fprintf(stderr, "stopeval");
     cb->debugbreak = savedBreak;
     if (status != LUA_OK)
     {
