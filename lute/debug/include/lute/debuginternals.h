@@ -135,6 +135,7 @@ struct LaunchConfig
     std::function<void(const Thread& thread)> onPause;
     std::function<void(const Thread& thread, StepInfo stepInfo)> onStepStop;
     std::function<void(const std::string& message, std::string source, int line)> onPrint;
+    std::function<void(const std::string& message, std::string source, int line)> onLogpointHit;
 };
 
 struct Target
@@ -252,6 +253,12 @@ private:
     bool installBreakpoint(lua_State* L, Breakpoint& bp);
     bool uninstallBreakpoint(lua_State* L, Breakpoint& bp);
     std::pair<std::vector<Breakpoint>, std::vector<Breakpoint>> modifyPendingBreakpoints(lua_State* L);
+
+    // for conditional breakpoints:
+    bool evaluateBpCondition(lua_State* L, const Breakpoint& bp);
+    bool evaluateBpHitCondition(lua_State* L, const Breakpoint& bp);
+    std::string evaluateLogMessage(lua_State* L, const Breakpoint& bp);
+
     void computeStoppedLine(lua_State* L);
 
     Variable makeVariable(lua_State* L, const std::string& name);

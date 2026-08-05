@@ -78,7 +78,7 @@ VariableScope VariableScope::makeTable(int variableReference, int luaref)
 
 bool Variable::isTrue()
 {
-    return value == "true" && type == "boolean";
+    return value != "false" && value != "nil" && type != "void";
 }
 
 Target::Target(Runtime& parentRuntime)
@@ -449,6 +449,81 @@ bool Target::launch(std::string sourcePath, const std::vector<std::string>& args
     return true;
 }
 
+std::string convertHitConditionToExpression(int hitCount, std::string hitExpression)
+{
+    size_t start = hitExpression.find_first_not_of(" \t");
+    if (start == std::string::npos)
+        return "true";
+    hitExpression = hitExpression.substr(start);
+    std::string hitString = std::to_string(hitCount);
+    if (hitExpression[0] == '%')
+        return hitString + " % " + hitExpression.substr(1) + " == 0";
+    if (hitExpression[0] == '>' || hitExpression[0] == '<' || hitExpression[0] == '=' || hitExpression[0] == '~')
+        return hitString + " " + hitExpression;
+    return hitString + " == " + hitExpression;
+}
+
+bool Target::evaluateBpCondition(lua_State* L, const Breakpoint& bp)
+{
+    EvaluateResult result = evaluateExpressionHelper(L, 0, bp.condition);
+    if (std::holds_alternative<std::string>(result))
+    {
+        parentRuntime.reporter.reportError(
+            Luau::format("cannot evaluate breakpoint condition %s at line %d in %s", bp.condition.c_str(), bp.line, bp.sourcePath.c_str())
+        );
+        return false;
+    }
+    Variable var = std::get<Variable>(result);
+    return var.isTrue();
+}
+
+bool Target::evaluateBpHitCondition(lua_State* L, const Breakpoint& bp)
+{
+    std::string hitExpression = convertHitConditionToExpression(bp.hitCount, bp.hitCondition);
+    EvaluateResult result = evaluateExpressionHelper(L, 0, hitExpression);
+    if (std::holds_alternative<std::string>(result))
+    {
+        parentRuntime.reporter.reportError(
+            Luau::format(
+                "cannot evaluate breakpoint hit condition %s with %d hits at line %d in %s",
+                bp.condition.c_str(),
+                bp.hitCount,
+                bp.line,
+                bp.sourcePath.c_str()
+            )
+        );
+        return false;
+    }
+    Variable var = std::get<Variable>(result);
+    return var.isTrue();
+}
+
+std::string Target::evaluateLogMessage(lua_State* L, const Breakpoint& bp)
+{
+    std::string logMessage = bp.logMessage;
+    size_t start;
+    while ((start = logMessage.find('{')) != std::string::npos)
+    {
+        size_t end = logMessage.find('}', start);
+        if (end == std::string::npos)
+        {
+            break;
+        }
+        std::string interpolateExpr = logMessage.substr(start + 1, end - start - 1);
+        EvaluateResult result = evaluateExpressionHelper(L, 0, interpolateExpr);
+        if (std::holds_alternative<std::string>(result))
+        {
+            parentRuntime.reporter.reportError(
+                Luau::format("cannot evaluate log point message %s at line %d in %s", logMessage.c_str(), bp.line, bp.sourcePath.c_str())
+            );
+            return logMessage;
+        }
+        Variable var = std::get<Variable>(result);
+        logMessage.replace(start, end - start + 1, var.value);
+    }
+    return logMessage;
+}
+
 void Target::installBpHitCallback()
 {
     lua_Callbacks* cb = lua_callbacks(childRuntime->GL);
@@ -471,16 +546,33 @@ void Target::installBpHitCallback()
             target->parentRuntime.reporter.reportError(Luau::format("breakpoint hit at line %d could not find a runtime source", line));
             return;
         }
-        target->stoppedLine = line;
         target->stoppedPc = L->ci->savedpc;
         std::string chunkname = info.source;
         std::optional<Breakpoint> bp = target->getBreakpointBySourceLineHelper(getSourceFromChunk(chunkname), line);
         // Only stop execution on installed breakpoints; otherwise, don't stop.
         if (bp && bp->status == BreakpointStatus::Installed)
         {
+            bp->hitCount++;
+            if (bp->condition != "" && !target->evaluateBpCondition(L, *bp))
+            {
+                return;
+            }
+            if (bp->hitCondition != "" && !target->evaluateBpHitCondition(L, *bp))
+            {
+                return;
+            }
+            if (bp->logMessage != "")
+            {
+                lock.unlock();
+                std::string message = target->evaluateLogMessage(L, *bp);
+                if(target->launchConfig.onLogpointHit)
+                    target->launchConfig.onLogpointHit(message, getSourceFromChunk(chunkname), line);
+                return;
+            }
             target->bpHit = *bp;
             target->paused = true;
             target->childRuntime->stopDebug();
+            target->stoppedLine = line;
             target->stoppedThread = L;
             target->stoppedThreadRef = getRefForThread(L);
             // Clear out stepping when this happens.
