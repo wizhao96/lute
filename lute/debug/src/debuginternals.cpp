@@ -1011,7 +1011,7 @@ void Target::injectUpvalues(lua_State* L, int level, lua_State* eval, int evalTa
     lua_pop(L, 1);
 }
 
-EvaluateResult Target::evaluateExpression(std::string expression, int frameId = -1)
+EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
 {
     struct StackGuard
     {

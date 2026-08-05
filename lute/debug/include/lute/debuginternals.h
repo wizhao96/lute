@@ -161,7 +161,7 @@ struct Target
     std::optional<std::vector<Variable>> getVariablesByScopeType(int frameId, VariableScopeType contextType);
 
     // For evaluation:
-    EvaluateResult evaluateExpression(std::string expression, int frameId);
+    EvaluateResult evaluateExpression(std::string expression, int frameId = -1);
 
     // For actively running scripts:
     bool launch(std::string sourcePath, const std::vector<std::string>& args, LaunchConfig config = {});
