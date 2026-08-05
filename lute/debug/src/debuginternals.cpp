@@ -28,10 +28,13 @@
 
 namespace debug
 {
-Breakpoint::Breakpoint(int id, std::string sourcePath, int line, BreakpointStatus status)
+Breakpoint::Breakpoint(int id, std::string sourcePath, int line, BreakpointConfig config, BreakpointStatus status)
     : id(id)
     , sourcePath(sourcePath)
     , line(line)
+    , condition(config.condition)
+    , hitCondition(config.condition)
+    , logMessage(config.logMessage)
     , status(status)
 {
 }
@@ -101,7 +104,7 @@ static std::string getSourceFromChunk(std::string chunkname)
     return chunkname;
 }
 
-Breakpoint Target::setBreakpoint(std::string sourcePath, int line)
+Breakpoint Target::setBreakpoint(std::string sourcePath, int line, BreakpointConfig config)
 {
     std::unique_lock lock(targetMutex);
     std::optional<Breakpoint> preexistingBp = getBreakpointBySourceLineHelper(sourcePath, line);
@@ -109,7 +112,7 @@ Breakpoint Target::setBreakpoint(std::string sourcePath, int line)
         return *preexistingBp;
     int id = currentBreakpointId;
     currentBreakpointId++;
-    auto [it, _] = breakpoints.insert_or_assign(id, Breakpoint{id, sourcePath, line, BreakpointStatus::PendingInstall});
+    auto [it, _] = breakpoints.insert_or_assign(id, Breakpoint{id, sourcePath, line, config, BreakpointStatus::PendingInstall});
     // We schedule breakpoint installs to happen when the runtime exists and we are paused. Otherwise,
     // they are scheduled for pending installs.
     if (childRuntime && paused)
@@ -1008,7 +1011,7 @@ void Target::injectUpvalues(lua_State* L, int level, lua_State* eval, int evalTa
     lua_pop(L, 1);
 }
 
-EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
+EvaluateResult Target::evaluateExpressionHelper(std::string expression, int frameId)
 {
     struct StackGuard
     {
@@ -1039,7 +1042,6 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
             lua_gc(global, LUA_GCRESTART, 0);
         }
     };
-    std::unique_lock lock(targetMutex);
     if (!paused)
         return "target was not paused";
     Luau::CompileOptions debugOptions;
@@ -1087,6 +1089,12 @@ EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
     if (lua_gettop(evalThread) == 0)
         return Variable{expression, "(no value)", "void"};
     return makeVariable(evalThread, expression);
+}
+
+EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
+{
+    std::unique_lock lock(targetMutex);
+    return evaluateExpressionHelper(expression, frameId);
 }
 
 void Target::continueProcessHelper(bool isStepping)

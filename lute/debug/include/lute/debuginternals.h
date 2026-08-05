@@ -29,13 +29,23 @@ enum class BreakpointStatus
     Invalid,
 };
 
+struct BreakpointConfig
+{
+    std::string condition = "";
+    std::string hitCondition = "";
+    std::string logMessage = "";
+};
+
 struct Breakpoint
 {
     int id;
     std::string sourcePath;
     int line;
+    std::string condition;
+    std::string hitCondition;
+    std::string logMessage;
     BreakpointStatus status;
-    explicit Breakpoint(int id, std::string sourcePath, int line, BreakpointStatus status);
+    Breakpoint(int id, std::string sourcePath, int line, BreakpointConfig config, BreakpointStatus status);
 };
 
 enum class StepType
@@ -143,7 +153,7 @@ struct Target
     // Any breakpoint that is placed when the target process is paused (including before launch) and that
     // have a loaded source are guaranteed to be installed before the process is resumed. Breakpoints placed on a loaded source
     // when the target script is running may not be installed until the next time that script is paused.
-    Breakpoint setBreakpoint(std::string sourcePath, int line);
+    Breakpoint setBreakpoint(std::string sourcePath, int line, BreakpointConfig config = {});
     bool removeBreakpoint(int bpId);
 
     std::vector<Breakpoint> getBreakpoints() const;
@@ -235,6 +245,7 @@ private:
     std::optional<Breakpoint> getBreakpointByIdHelper(int breakpointId) const;
     void continueProcessHelper(bool isStepping);
     std::optional<StackFrame> getStackFrameHelper(int threadId, int level);
+    EvaluateResult evaluateExpressionHelper(std::string expression, int frameId);
 
     bool installBreakpoint(lua_State* L, Breakpoint& bp);
     bool uninstallBreakpoint(lua_State* L, Breakpoint& bp);
