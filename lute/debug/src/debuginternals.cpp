@@ -76,6 +76,11 @@ VariableScope VariableScope::makeTable(int variableReference, int luaref)
     return VariableScope(variableReference, VariableScopeType::Table, "Table", -1, -1, luaref);
 }
 
+bool Variable::isTrue()
+{
+    return value == "true" && type == "boolean";
+}
+
 Target::Target(Runtime& parentRuntime)
     : parentRuntime(parentRuntime)
     , loadedSources("")
@@ -1011,7 +1016,7 @@ void Target::injectUpvalues(lua_State* L, int level, lua_State* eval, int evalTa
     lua_pop(L, 1);
 }
 
-EvaluateResult Target::evaluateExpressionHelper(std::string expression, int frameId)
+EvaluateResult Target::evaluateExpressionHelper(lua_State* L, int level, std::string expression)
 {
     struct StackGuard
     {
@@ -1042,8 +1047,6 @@ EvaluateResult Target::evaluateExpressionHelper(std::string expression, int fram
             lua_gc(global, LUA_GCRESTART, 0);
         }
     };
-    if (!paused)
-        return "target was not paused";
     Luau::CompileOptions debugOptions;
     debugOptions.optimizationLevel = 1;
     debugOptions.debugLevel = 2;
@@ -1059,15 +1062,13 @@ EvaluateResult Target::evaluateExpressionHelper(std::string expression, int fram
     lua_setfield(evalThread, 2, "__index");
     lua_setmetatable(evalThread, 1);
     // inject locals + upvalues
-    if (frameId != -1)
+    if (L != nullptr)
     {
-        auto [threadId, level] = idToStackFrameInfo.at(frameId);
-        lua_State* thread = threadIdToState.at(threadId);
-        int depth = lua_stackdepth(thread);
+        int depth = lua_stackdepth(L);
         for (int i = depth - 1; i >= level; i--)
         {
-            injectUpvalues(thread, i, evalThread, 1);
-            injectLocals(thread, i, evalThread, 1);
+            injectUpvalues(L, i, evalThread, 1);
+            injectLocals(L, i, evalThread, 1);
         }
     }
     lua_replace(evalThread, LUA_GLOBALSINDEX);
@@ -1094,7 +1095,17 @@ EvaluateResult Target::evaluateExpressionHelper(std::string expression, int fram
 EvaluateResult Target::evaluateExpression(std::string expression, int frameId)
 {
     std::unique_lock lock(targetMutex);
-    return evaluateExpressionHelper(expression, frameId);
+    if (!paused)
+        return "target was not paused";
+    lua_State* thread = nullptr;
+    int level = -1;
+    if (frameId != -1)
+    {
+        auto [threadId, threadLevel] = idToStackFrameInfo.at(frameId);
+        thread = threadIdToState.at(threadId);
+        level = threadLevel;
+    }
+    return evaluateExpressionHelper(thread, level, expression);
 }
 
 void Target::continueProcessHelper(bool isStepping)

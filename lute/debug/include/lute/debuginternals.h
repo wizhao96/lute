@@ -43,6 +43,7 @@ struct Breakpoint
     int line;
     std::string condition;
     std::string hitCondition;
+    int hitCount = 0;
     std::string logMessage;
     BreakpointStatus status;
     Breakpoint(int id, std::string sourcePath, int line, BreakpointConfig config, BreakpointStatus status);
@@ -118,6 +119,7 @@ struct Variable
     std::string type;
     // for tables
     int variableReference = 0;
+    bool isTrue();
 };
 
 using EvaluateResult = std::variant<Variable, std::string>;
@@ -245,7 +247,7 @@ private:
     std::optional<Breakpoint> getBreakpointByIdHelper(int breakpointId) const;
     void continueProcessHelper(bool isStepping);
     std::optional<StackFrame> getStackFrameHelper(int threadId, int level);
-    EvaluateResult evaluateExpressionHelper(std::string expression, int frameId);
+    EvaluateResult evaluateExpressionHelper(lua_State* L, int level, std::string expression);
 
     bool installBreakpoint(lua_State* L, Breakpoint& bp);
     bool uninstallBreakpoint(lua_State* L, Breakpoint& bp);
