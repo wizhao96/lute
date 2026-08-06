@@ -2,6 +2,8 @@ local debugger = require("@lute/debugger")
 local dapStream = require("./dapStream")
 local dapTypes = require("./dapTypes")
 local json = require("@std/json")
+local process = require("@std/process")
+local path = require("@std/path")
 
 local function createSource(sourcePath: string): dapTypes.Source
 	return {
@@ -10,9 +12,19 @@ local function createSource(sourcePath: string): dapTypes.Source
 	}
 end
 
+local function expandHome(sourcePath: string): string
+	local homedir = path.format(process.homedir())
+	if sourcePath == "~" then
+		return homedir
+	end
+	if sourcePath:sub(1, 2) == "~/" then
+		return homedir .. sourcePath:sub(2)
+	end
+	return sourcePath
+end
+
 local function debugToDapBreakpoint(breakpoint: debugger.Breakpoint): dapTypes.Breakpoint
 	local dapBreakpoint: dapTypes.Breakpoint = {
-		id = breakpoint.id,
 		verified = breakpoint.status == "installed",
 		source = createSource(breakpoint.sourcePath),
 		line = breakpoint.line,
@@ -138,7 +150,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 				supportsHitConditionalBreakpoints = true,
 				supportsLogPoints = true,
 			}
-			ioSession.writeResponse(reqSeq, true, command, nil, capabilities, nil, capabilities)
+			ioSession.writeResponse(reqSeq, true, command, nil, capabilities)
 			ioSession.writeEvent("initialized")
 		elseif command == "configurationDone" then
 			configurationDone = true
@@ -170,7 +182,7 @@ local function dapLoop(reader: dapStream.Reader, writer: dapStream.Writer)
 			local args = request.arguments :: dapTypes.LaunchArgs?
 			if args and args.program then
 				launchConfig = {
-					program = args.program,
+					program = expandHome(args.program),
 					args = args.args,
 				}
 				launchSeq = reqSeq
