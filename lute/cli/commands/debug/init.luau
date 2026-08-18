@@ -1,6 +1,7 @@
 local io = require("@std/io")
 local cli = require("@batteries/cli")
 local dap = require("@self/dap")
+local debugCli = require("@self/cli")
 
 local function printHelp(args: cli.Parser)
 	print(args:usage("lute debug"))
@@ -30,6 +31,8 @@ local function main(...: string)
 
 	if args:get("subcommand") == "serve" then
 		dap.dapLoop(io.input, io.write)
+	elseif args:get("subcommand") == "cli" then
+		debugCli.cli()
 	else
 		printHelp(args)
 	end
