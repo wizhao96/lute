@@ -69,6 +69,7 @@ local function cli()
 			`\nBreakpoint {bp.id} at {bp.sourcePath}:{bp.line}, stopped at {currentThreadId} at stack frame {currentFrameId}\n`
 		)
 		printSourceContext(bp.sourcePath, bp.line)
+		io.write("(lute debug)\t")
 	end
 	local function onExit(success: boolean)
 		if success then
@@ -78,19 +79,41 @@ local function cli()
 		end
 		currentThreadId = nil
 		currentFrameId = nil
-		running = false
+		target = debugger.newTarget()
+		io.write("(lute debug)\t")
+	end
+	local function printVariable(v)
+		io.write(`{v.value}`)
+		if v.variableRef and v.variableRef > 0 then
+			local members = target:getVariables(v.variableRef)
+			if members then
+				for _, m in members do
+					if m.variableRef and m.variableRef > 0 then
+						io.write(`\t{m.name} = {m.value} (ref {m.variableRef})\n`)
+					else
+						io.write(`\t{m.name} = {m.value}\n`)
+					end
+				end
+			end
+		end
 	end
 	while running do
 		local input = io.input("(lute debug)\t")
 		local command, rest = parseLine(input)
-		if command == "b" or command == "breakpoint" then
+		local lastInput = ""
+		if input == "" and lastInput ~= "" then
+			input = lastInput
+		else
+			lastInput = input
+		end
+		if command == "b" or command == "bp" or command == "breakpoint" then
 			local bpCommand, restBp = parseLine(rest)
-			if bpCommand == "set" then
+			if bpCommand == "set" or bpCommand == "add" then
 				local sourcePath, line = restBp:match("^(.-):(%d+)$")
 				if sourcePath and line and tonumber(line) then
 					target:setBreakpoint(resolvePath(sourcePath), tonumber(line))
 				else
-					io.write("usage: breakpoint set <file>:<line>\n")
+					io.write(string.format("usage: %s %s <file>:<line>\n", command, bpCommand))
 				end
 			elseif bpCommand == "remove" then
 				local id = tonumber(restBp)
@@ -100,11 +123,10 @@ local function cli()
 					io.write("usage: breakpoint remove <id>\n")
 				end
 			end
-		end
-		if command == "launch" or command == "run" or command == "r" then
+		elseif command == "launch" or command == "run" or command == "r" then
 			local sourcePath, argsRest = parseLine(rest)
 			if sourcePath == "" then
-				io.write("usage: run <script> [args...]\n")
+				io.write(string.format("usage: %s <script> [args...]\n", command))
 			else
 				local args = {}
 				for arg in argsRest:gmatch("%S+") do
@@ -118,12 +140,26 @@ local function cli()
 					io.write(`error: {err}\n`)
 				end
 			end
-		end
-		if command == "continue" or command == "c" then
-			target:continueProcess()
-		end
-		if command == "q" or command == "quit" then
+		elseif command == "continue" or command == "c" then
+			local continued = target:continueProcess()
+			if not continued then
+				io.write("cannot continue (not stopped/launched)\n")
+			end
+		elseif command == "p" or command == "print" or command == "expr" then
+			if not currentFrameId then
+				io.write("no frame selected (not stopped/launched)\n")
+			else
+				local result = target:evaluateExpression(rest, currentFrameId)
+				if type(result) == "string" then
+					io.write(`error: {result}\n`)
+				else
+					printVariable(result)
+				end
+			end
+		elseif command == "q" or command == "quit" then
 			running = false
+		else
+			io.write(`unknown command: {command}\n`)
 		end
 	end
 end
