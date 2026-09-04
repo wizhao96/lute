@@ -83,30 +83,19 @@ local function cli()
 		currentThreadId = nil
 		currentFrameId = nil
 		target = debugger.newTarget()
-		for savedBp in savedBps do
-			target.setBreakpoint(savedBp.source, savedBp.line)
+		for _, savedBp in savedBps do
+			target:setBreakpoint(savedBp.sourcePath, savedBp.line)
 		end
 		stopped = true
 		launched = false
 	end
-	local function printVariable(v: debugger.Variable, useEval: boolean)
-		if not useEval then
-			io.write(`name: {v.name}\n`)
-		end
-		io.write(`value: {v.value}\n`)
-		io.write(`type: {v.type}\n`)
+	local function printVariable(v: debugger.Variable, indent: string?)
+		local prefix = indent or ""
+		local name = v.name:match("^return (.*)$") or v.name
 		if v.variableRef and v.variableRef > 0 then
-			io.write(`subvalues:\n`)
-			local members = target:getVariables(v.variableRef)
-			if members then
-				for _, m in members do
-					if m.variableRef and m.variableRef > 0 then
-						io.write(`\t{m.name} = {m.value} (var ref {m.variableRef})\n`)
-					else
-						io.write(`\t{m.name} = {m.value}\n`)
-					end
-				end
-			end
+			io.write(`{prefix}{name} = {v.value} (var ref {v.variableRef})\n`)
+		else
+			io.write(`{prefix}{name} = {v.value}\n`)
 		end
 	end
 	while runningCLI do
@@ -124,8 +113,9 @@ local function cli()
 			local bpCommand, restBp = parseLine(rest)
 			if bpCommand == "set" or bpCommand == "add" then
 				local sourcePath, line = restBp:match("^(.-):(%d+)$")
-				if sourcePath and line and tonumber(line) then
-					local bp = target:setBreakpoint(resolvePath(sourcePath), tonumber(line))
+				local lineNum = line and tonumber(line)
+				if sourcePath and lineNum then
+					local bp = target:setBreakpoint(resolvePath(sourcePath), lineNum)
 					io.write(`Breakpoint {bp.id} now set at {bp.sourcePath}:{bp.line}\n`)
 				else
 					io.write(string.format("usage: %s %s <file>:<line>\n", command, bpCommand))
@@ -173,18 +163,98 @@ local function cli()
 				if type(result) == "string" then
 					io.write(`error: {result}\n`)
 				else
-					printVariable(result, true)
+					printVariable(result)
 				end
 			end
-		elseif command == "p" or command == "print" or command == "expr" then
+		elseif command == "vars" or command == "v" then
 			if not currentFrameId then
 				io.write("no frame selected (not stopped/launched)\n")
 			else
-				local result = target:evaluateExpression(rest, currentFrameId)
-				if type(result) == "string" then
-					io.write(`error: {result}\n`)
+				local scopeFilter = rest:match("^%s*(%S*)")
+				local scopes = target:getScopes(currentFrameId)
+				if not scopes then
+					io.write("could not get scopes\n")
 				else
-					printVariable(result, true)
+					for _, scope in scopes do
+						if scopeFilter == "" or scope.type == scopeFilter then
+							io.write(`-- {scope.type} --\n`)
+							local vars = target:getVariables(scope.variableRef)
+							if vars then
+								for _, v in vars do
+									printVariable(v)
+								end
+							end
+						end
+					end
+				end
+			end
+		elseif command == "expand" or command == "x" then
+			local ref = tonumber(rest)
+			if not ref then
+				io.write("usage: expand <var ref>\n")
+			else
+				local members = target:getVariables(ref)
+				if not members then
+					io.write(`could not expand var ref {ref}\n`)
+				else
+					for _, m in members do
+						printVariable(m)
+					end
+				end
+			end
+		elseif command == "threads" or command == "th" then
+			local threads = target:getThreads()
+			for _, thread in threads do
+				local marker = if thread.id == currentThreadId then "*" else " "
+				io.write(`{marker} {thread.id}\t{thread.name}\n`)
+			end
+		elseif command == "thread" then
+			local id = tonumber(rest)
+			if not id then
+				io.write("usage: thread <id>\n")
+			else
+				local stackTrace = target:getStackTrace(id)
+				if not stackTrace or #stackTrace == 0 then
+					io.write(`could not find thread {id} or it has no stack frames\n`)
+				else
+					currentThreadId = id
+					currentFrameId = stackTrace[1].id
+					io.write(`[switching to thread {id}]\n`)
+					io.write(`#0\t{stackTrace[1].name} at {stackTrace[1].sourcePath}:{stackTrace[1].line}\n`)
+					printSourceContext(stackTrace[1].sourcePath, stackTrace[1].line)
+				end
+			end
+		elseif command == "frames" or command == "bt" or command == "backtrace" then
+			if not currentThreadId then
+				io.write("no thread selected (not stopped/launched)\n")
+			else
+				local stackTrace = target:getStackTrace(currentThreadId)
+				if not stackTrace then
+					io.write("could not get stack trace\n")
+				else
+					for i, frame in stackTrace do
+						local marker = if frame.id == currentFrameId then "*" else " "
+						io.write(`{marker} #{i - 1}\t{frame.name} at {frame.sourcePath}:{frame.line}\n`)
+					end
+				end
+			end
+		elseif command == "frame" or command == "f" then
+			if not currentThreadId then
+				io.write("no thread selected (not stopped/launched)\n")
+			else
+				local level = tonumber(rest)
+				if not level then
+					io.write("usage: frame <level>\n")
+				else
+					local stackTrace = target:getStackTrace(currentThreadId)
+					local frame = stackTrace and stackTrace[level + 1]
+					if not frame then
+						io.write(`no such frame level {level}\n`)
+					else
+						currentFrameId = frame.id
+						io.write(`#{level}\t{frame.name} at {frame.sourcePath}:{frame.line}\n`)
+						printSourceContext(frame.sourcePath, frame.line)
+					end
 				end
 			end
 		elseif command == "continue" or command == "c" then
